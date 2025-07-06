@@ -9,7 +9,7 @@ import io
 # Cách tiếp cận mới: Đọc file bằng cả 2 cách của 2 ứng dụng gốc
 # và xem cách nào thành công. Đây là cách đáng tin cậy nhất.
 # ==============================================================================
-def detect_report_type(file_content):
+def detect_report_type(file_content_bytes):
     """
     Thử đọc file bằng cả 2 phương pháp gốc để nhận diện.
     Nếu đọc được header của POS -> là file POS.
@@ -18,7 +18,7 @@ def detect_report_type(file_content):
     # --- Thử nhận diện theo kiểu POS ---
     try:
         # Ứng dụng POS gốc dùng pandas để đọc với header ở dòng 5 (header=4)
-        df_pos_check = pd.read_excel(io.BytesIO(file_content), header=4)
+        df_pos_check = pd.read_excel(io.BytesIO(file_content_bytes), header=4)
         pos_headers = {str(col).lower() for col in df_pos_check.columns}
         # Các cột đặc trưng của file POS
         pos_characteristic_cols = {'séri', 'số', 'đơn giá(đã có thuế gtgt)'}
@@ -31,7 +31,7 @@ def detect_report_type(file_content):
     # --- Thử nhận diện theo kiểu HDDT ---
     try:
         # Ứng dụng HDDT gốc dùng openpyxl để đọc, ta sẽ làm tương tự
-        wb_hddt_check = load_workbook(io.BytesIO(file_content), data_only=True)
+        wb_hddt_check = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
         ws_hddt_check = wb_hddt_check.active
         # Header của HDDT ở dòng 9
         hddt_headers = {str(cell.value).lower() for cell in ws_hddt_check[9]}
@@ -49,7 +49,7 @@ def detect_report_type(file_content):
 # KHỐI 1: TOÀN BỘ LOGIC GỐC CỦA ỨNG DỤNG POS
 # (SAO CHÉP 100% - KHÔNG THAY ĐỔI)
 # ==============================================================================
-def process_pos_report(file_content, selected_chxd, price_periods, new_price_invoice_number, **kwargs):
+def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, **kwargs):
     
     # --- Các hàm nội bộ của logic POS ---
     def _to_float_pos(value):
@@ -61,6 +61,15 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
     def _clean_string_pos(s):
         if s is None: return ""
         return re.sub(r'\s+', ' ', str(s)).strip()
+    
+    def format_tax_code(raw_vat_value):
+        if raw_vat_value is None: return ""
+        try:
+            s_value = str(raw_vat_value).replace('%', '').strip()
+            f_value = float(s_value)
+            if 0 < f_value < 1: f_value *= 100
+            return f"{round(f_value):02d}"
+        except (ValueError, TypeError): return ""
 
     def _get_static_data_pos(file_path):
         try:
@@ -69,7 +78,7 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
             chxd_detail_map, store_specific_x_lookup = {}, {}
             for row_idx in range(4, ws.max_row + 1):
                 row_values = [cell.value for cell in ws[row_idx]]
-                if len(row_values) < 18: continue
+                if len(row_values) < 24: continue
                 chxd_name = _clean_string_pos(row_values[3])
                 if not chxd_name: continue
                 chxd_detail_map[chxd_name] = {
@@ -146,7 +155,7 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
     # --- Bắt đầu logic chính của POS ---
     static_data, error = _get_static_data_pos("Data_POS.xlsx")
     if error: raise ValueError(error)
-    df = pd.read_excel(io.BytesIO(file_content), header=4)
+    df = pd.read_excel(io.BytesIO(file_content_bytes), header=4)
     df.columns = [_clean_string_pos(col) for col in df.columns]
     df = df.dropna(how='all')
     df = df[df['Số lượng'].apply(_to_float_pos) > 0]
@@ -181,6 +190,7 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
         for r in all_rows_for_df: final_wb.active.append(r)
         output = io.BytesIO()
         final_wb.save(output)
+        output.seek(0)
         return output
     else:
         if not new_price_invoice_number: raise ValueError("Vui lòng nhập số hóa đơn của giá mới.")
@@ -192,13 +202,14 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
         for r in _process_rows(df_new, is_new_price=True): wb_new.active.append(r)
         output_old, output_new = io.BytesIO(), io.BytesIO()
         wb_old.save(output_old); wb_new.save(output_new)
+        output_old.seek(0); output_new.seek(0)
         return {'old': output_old, 'new': output_new}
 
 # ==============================================================================
 # KHỐI 2: TOÀN BỘ LOGIC GỐC CỦA ỨNG DỤNG HDDT
 # (SAO CHÉP 100% - KHÔNG THAY ĐỔI)
 # ==============================================================================
-def process_hddt_report(file_content, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
+def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
     
     # --- Các hàm nội bộ của logic HDDT ---
     def _clean_string_hddt(s):
@@ -347,12 +358,13 @@ def process_hddt_report(file_content, selected_chxd, price_periods, new_price_in
         for row_data in original_invoice_rows + bvmt_rows: upsse_wb.active.append(row_data)
         output_buffer = io.BytesIO()
         upsse_wb.save(output_buffer)
+        output_buffer.seek(0)
         return output_buffer
 
     # --- Bắt đầu logic chính của HDDT ---
     static_data, error = _load_static_data_hddt("Data_HDDT.xlsx", "MaHH.xlsx", "DSKH.xlsx")
     if error: raise ValueError(error)
-    bkhd_wb = load_workbook(io.BytesIO(file_content), data_only=True)
+    bkhd_wb = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
     bkhd_ws = bkhd_wb.active
     final_date = None
     if confirmed_date_str:
@@ -365,7 +377,6 @@ def process_hddt_report(file_content, selected_chxd, price_periods, new_price_in
                 if isinstance(date_val, datetime): unique_dates.add(date_val.date())
                 elif isinstance(date_val, str):
                     try:
-                        # Sửa lỗi: Thử đọc ngày tháng dạng text
                         unique_dates.add(datetime.strptime(date_val, '%d/%m/%Y').date())
                     except ValueError: continue
         if not unique_dates: raise ValueError("Không tìm thấy dữ liệu hóa đơn hợp lệ nào trong file Bảng kê.")
@@ -395,17 +406,19 @@ def process_hddt_report(file_content, selected_chxd, price_periods, new_price_in
         if not result_old and not result_new: raise ValueError("Không có dữ liệu hợp lệ trong cả hai giai đoạn giá.")
         if not result_old: return result_new
         if not result_new: return result_old
+        output_old.seek(0); output_new.seek(0)
         return {'old': result_old, 'new': result_new}
 
 # ==============================================================================
-# HÀM ĐIỀU PHỐI CHÍNH
+# HÀM ĐIỀU PHỐI CHÍNH (SỬA LỖI 'read')
 # ==============================================================================
 def process_unified_file(file_content, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
     """
     Hàm điều phối chính: Nhận diện loại file và gọi hàm xử lý tương ứng.
     """
-    # Phải tạo một bản sao của file content để dùng nhiều lần
-    file_content_bytes = file_content.read()
+    # Sửa lỗi: file_content đã là đối tượng bytes được truyền từ app.py
+    # Không cần gọi .read() nữa.
+    file_content_bytes = file_content
     
     report_type = detect_report_type(file_content_bytes)
 
@@ -418,4 +431,3 @@ def process_unified_file(file_content, selected_chxd, price_periods, new_price_i
 
     else:
         raise ValueError("Không thể tự động nhận diện loại Bảng kê. Vui lòng kiểm tra lại file Excel bạn đã tải lên.")
-
