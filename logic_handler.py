@@ -287,8 +287,11 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
         if not chxd_details: raise ValueError(f"Không tìm thấy thông tin cho CHXD: '{selected_chxd}'")
         b5_bkhd = _pos_clean_string(str(bkhd_ws['B5'].value))
         f5_norm = _pos_clean_string(chxd_details['f5_val_full'])
-        if f5_norm and f5_norm != b5_bkhd:
-            raise ValueError(f"Lỗi dữ liệu: Mã cửa hàng không khớp.\n- Mã trong Bảng kê (ô B5): '{b5_bkhd}'\n- Mã trong file cấu hình (cột K): '{f5_norm}'")
+        
+        # SỬA LỖI: Chỉ so sánh 6 ký tự cuối
+        if f5_norm and len(f5_norm) >= 6 and f5_norm[-6:] != b5_bkhd:
+            raise ValueError(f"Lỗi dữ liệu: Mã cửa hàng không khớp.\n- Mã trong Bảng kê (ô B5): '{b5_bkhd}'\n- Mã trong file cấu hình (6 ký tự cuối cột K): '{f5_norm[-6:]}'")
+        
         all_source_rows = list(bkhd_ws.iter_rows(min_row=5, values_only=True))
         if price_periods == '1':
             processed_rows = _pos_generate_upsse_rows(all_source_rows, static_data, selected_chxd, is_new_price_period=False)
