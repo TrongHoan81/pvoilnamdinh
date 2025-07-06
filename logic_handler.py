@@ -5,7 +5,7 @@ import re
 import io
 
 # ==============================================================================
-# CÁC HÀM TIỆN ÍCH CHUNG
+# CÁC HÀM TIỆN ÍCH CHUNG (KHÔNG THAY ĐỔI)
 # ==============================================================================
 def _clean_string_shared(s):
     if s is None: return ""
@@ -31,7 +31,6 @@ def _format_tax_code_shared(raw_vat_value):
         return ""
 
 def _create_upsse_workbook_shared():
-    """Hàm tạo file Excel chung, được cả hai logic sử dụng."""
     headers = ["Mã khách", "Tên khách hàng", "Ngày", "Số hóa đơn", "Ký hiệu", "Diễn giải", "Mã hàng", "Tên mặt hàng", "Đvt", "Mã kho", "Mã vị trí", "Mã lô", "Số lượng", "Giá bán", "Tiền hàng", "Mã nt", "Tỷ giá", "Mã thuế", "Tk nợ", "Tk doanh thu", "Tk giá vốn", "Tk thuế có", "Cục thuế", "Vụ việc", "Bộ phận", "Lsx", "Sản phẩm", "Hợp đồng", "Phí", "Khế ước", "Nhân viên bán", "Tên KH(thuế)", "Địa chỉ (thuế)", "Mã số Thuế", "Nhóm Hàng", "Ghi chú", "Tiền thuế"]
     wb = Workbook()
     ws = wb.active
@@ -40,30 +39,35 @@ def _create_upsse_workbook_shared():
     return wb
 
 # ==============================================================================
-# HÀM NHẬN DIỆN LOẠI BẢNG KÊ
+# HÀM NHẬN DIỆN LOẠI BẢNG KÊ (ĐÃ SỬA CHÍNH XÁC THEO HÌNH ẢNH)
 # ==============================================================================
 def detect_report_type(file_content_bytes):
+    """
+    Hàm nhận diện đơn giản và đáng tin cậy nhất, dựa trên gợi ý của người dùng.
+    """
     try:
-        df_pos_check = pd.read_excel(io.BytesIO(file_content_bytes), header=4)
-        pos_headers = {str(col).lower() for col in df_pos_check.columns}
-        pos_characteristic_cols = {'séri', 'số', 'đơn giá(đã có thuế gtgt)'}
-        if pos_characteristic_cols.issubset(pos_headers):
+        wb = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
+        ws = wb.active
+
+        # Cách 1: Kiểm tra cho file POS (đáng tin cậy nhất)
+        # SỬA LỖI: Kiểm tra chính xác ô B4 có phải là 'Seri' không.
+        if ws['B4'].value and 'seri' == str(ws['B4'].value).lower().strip():
             return 'POS'
+
+        # Cách 2: Kiểm tra cho file HDDT (đã ổn định)
+        # Quét dòng 9 để tìm header đặc trưng nhất
+        for cell in ws[9]:
+            if cell.value and 'số công văn (số tham chiếu)' in str(cell.value).lower():
+                return 'HDDT'
+                
     except Exception:
-        pass
-    try:
-        wb_hddt_check = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
-        ws_hddt_check = wb_hddt_check.active
-        hddt_headers = {str(cell.value).lower() for cell in ws_hddt_check[9]}
-        hddt_characteristic_cols = {'số công văn (số tham chiếu)', 'mã kh (fast)', 'mst khách hàng'}
-        if hddt_characteristic_cols.issubset(hddt_headers):
-            return 'HDDT'
-    except Exception:
-        pass
+        # Nếu có bất kỳ lỗi nào khi đọc file, trả về UNKNOWN
+        return 'UNKNOWN'
+
     return 'UNKNOWN'
 
 # ==============================================================================
-# KHỐI 1: LOGIC GỐC CỦA ỨNG DỤNG POS
+# KHỐI 1: LOGIC GỐC CỦA ỨNG DỤNG POS (GIỮ NGUYÊN 100%)
 # ==============================================================================
 def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, **kwargs):
     
@@ -201,7 +205,7 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
         return {'old': output_old, 'new': output_new}
 
 # ==============================================================================
-# KHỐI 2: LOGIC GỐC CỦA ỨNG DỤNG HDDT
+# KHỐI 2: LOGIC HDDT (ĐÃ ỔN ĐỊNH - KHÔNG CHỈNH SỬA)
 # ==============================================================================
 def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
     
@@ -397,4 +401,3 @@ def process_unified_file(file_content, selected_chxd, price_periods, new_price_i
         return process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=confirmed_date_str)
     else:
         raise ValueError("Không thể tự động nhận diện loại Bảng kê. Vui lòng kiểm tra lại file Excel bạn đã tải lên.")
-
