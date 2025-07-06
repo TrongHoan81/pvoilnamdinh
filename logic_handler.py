@@ -30,7 +30,7 @@ def detect_report_type(file_content_bytes):
     return 'UNKNOWN'
 
 # ==============================================================================
-# KHỐI 1: LOGIC XỬ LÝ BẢNG KÊ POS (ĐÃ CẬP NHẬT ĐỂ DÙNG CHUNG FILE DATA_HDDT.XLSX)
+# KHỐI 1: LOGIC XỬ LÝ BẢNG KÊ POS (Đã ổn định)
 # ==============================================================================
 
 # --- Các hàm trợ giúp cho POS (Không thay đổi) ---
@@ -47,7 +47,6 @@ def _pos_clean_string(s):
         return ""
     return re.sub(r'\s+', ' ', str(s)).strip()
 
-# --- CẬP NHẬT LOGIC LẤY DỮ LIỆU TĨNH CHO POS ---
 def _pos_get_static_data(file_path):
     """
     Đọc dữ liệu cấu hình tĩnh từ file Data_HDDT.xlsx.
@@ -56,59 +55,35 @@ def _pos_get_static_data(file_path):
     try:
         wb = load_workbook(file_path, data_only=True)
         ws = wb.active
-        
-        chxd_detail_map = {}
-        store_specific_x_lookup = {}
-        
-        # Đọc từ dòng 3, tương tự logic HDDT
+        chxd_detail_map, store_specific_x_lookup = {}, {}
         for row_idx in range(3, ws.max_row + 1):
             row_values = [cell.value for cell in ws[row_idx]]
             if len(row_values) < 12: continue
-            
-            # Cột D là Tên CHXD
             chxd_name = _pos_clean_string(row_values[3])
             if chxd_name:
                 chxd_detail_map[chxd_name] = {
-                    # Cột J là Mã kho
-                    'g5_val': row_values[9],
-                    # Cột L là Khu vực
-                    'h5_val': _pos_clean_string(row_values[11]).lower(),
-                    # Cột K là Mã trên bảng kê (Ký hiệu hóa đơn)
-                    'f5_val_full': _pos_clean_string(row_values[10]),
-                    'b5_val': chxd_name
+                    'g5_val': row_values[9], 'h5_val': _pos_clean_string(row_values[11]).lower(),
+                    'f5_val_full': _pos_clean_string(row_values[10]), 'b5_val': chxd_name
                 }
-                # Cột E, F, G, H là Vụ việc
                 store_specific_x_lookup[chxd_name] = {
-                    "xăng e5 ron 92-ii": row_values[4], 
-                    "xăng ron 95-iii": row_values[5],
-                    "dầu do 0,05s-ii": row_values[6], 
-                    "dầu do 0,001s-v": row_values[7]
+                    "xăng e5 ron 92-ii": row_values[4], "xăng ron 95-iii": row_values[5],
+                    "dầu do 0,05s-ii": row_values[6], "dầu do 0,001s-v": row_values[7]
                 }
-        
-        # Hàm trợ giúp mới để đọc từ cột A, B
         def get_lookup(min_r, max_r, min_c=1, max_c=2):
             return {_pos_clean_string(row[0]).lower(): row[1] for row in ws.iter_rows(min_row=min_r, max_row=max_r, min_col=min_c, max_col=max_c, values_only=True) if row[0] and row[1]}
-
-        # Ánh xạ các vùng tra cứu theo vị trí mới
-        tmt_lookup_table = {k: _pos_to_float(v) for k, v in get_lookup(10, 13).items()} # A10:B13
-
+        tmt_lookup_table = {k: _pos_to_float(v) for k, v in get_lookup(10, 13).items()}
         wb.close()
         return {
-            "lookup_table": get_lookup(4, 7),           # A4:B7 (Mã hàng)
-            "tmt_lookup_table": tmt_lookup_table,
-            "s_lookup_table": get_lookup(29, 31),       # A29:B31 (TK Nợ)
-            "t_lookup_regular": get_lookup(33, 35),     # A33:B35 (TK Doanh thu HH)
-            "t_lookup_tmt": get_lookup(48, 50),         # A48:B50 (TK Doanh thu TMT)
-            "v_lookup_table": get_lookup(53, 55),       # A53:B55 (TK Thuế Có)
-            "u_value": ws['B36'].value,                 # B36 (TK Giá vốn)
-            "chxd_detail_map": chxd_detail_map,
+            "lookup_table": get_lookup(4, 7), "tmt_lookup_table": tmt_lookup_table,
+            "s_lookup_table": get_lookup(29, 31), "t_lookup_regular": get_lookup(33, 35),
+            "t_lookup_tmt": get_lookup(48, 50), "v_lookup_table": get_lookup(53, 55),
+            "u_value": ws['B36'].value, "chxd_detail_map": chxd_detail_map,
             "store_specific_x_lookup": store_specific_x_lookup
         }
     except FileNotFoundError:
         raise ValueError(f"Lỗi nghiêm trọng: Không tìm thấy file cấu hình '{file_path}'.")
     except Exception as e:
         raise ValueError(f"Lỗi khi đọc file cấu hình '{file_path}': {e}")
-
 
 def _pos_create_excel_buffer(processed_rows):
     if not processed_rows: return None
@@ -118,12 +93,10 @@ def _pos_create_excel_buffer(processed_rows):
     for _ in range(4): output_ws.append([''] * len(headers))
     output_ws.append(headers)
     for r_data in processed_rows: output_ws.append(r_data)
-    date_style = NamedStyle(name="date_style", number_format='DD/MM/YYYY')
+    # Vì ngày đã được định dạng thành chuỗi, không cần áp dụng style nữa.
+    # Đoạn code này được giữ lại phòng trường hợp cần dùng trong tương lai, nhưng hiện không có tác dụng.
     text_style = NamedStyle(name='text_style', number_format='@')
     for row_index in range(6, output_ws.max_row + 1):
-        cell_date = output_ws[f'C{row_index}']
-        if isinstance(cell_date.value, datetime):
-            cell_date.style = date_style
         output_ws[f'R{row_index}'].style = text_style
     output_ws.column_dimensions['B'].width = 35
     output_ws.column_dimensions['C'].width = 12
@@ -133,32 +106,30 @@ def _pos_create_excel_buffer(processed_rows):
     output_buffer.seek(0)
     return output_buffer
 
-# --- CÁC HÀM TÍNH TOÁN (KHÔNG THAY ĐỔI THUẬT TOÁN) ---
 def _pos_process_single_row(row, details, selected_chxd):
     upsse_row = [''] * 37
     try:
-        ma_kh = _pos_clean_string(str(row[4]))
-        ten_kh = _pos_clean_string(str(row[5]))
-        ngay_hd_raw = row[3]
-        so_ct = _pos_clean_string(str(row[1]))
-        so_hd = _pos_clean_string(str(row[2]))
-        dia_chi_goc = _pos_clean_string(str(row[6]))
-        mst_goc = _pos_clean_string(str(row[7]))
-        product_name = _pos_clean_string(str(row[8]))
-        so_luong = _pos_to_float(row[10])
-        don_gia_vat = _pos_to_float(row[11])
-        tien_hang_source = _pos_to_float(row[13])
-        tien_thue_source = _pos_to_float(row[14])
+        ma_kh, ten_kh, ngay_hd_raw, so_ct, so_hd, dia_chi_goc, mst_goc, product_name, so_luong, don_gia_vat, tien_hang_source, tien_thue_source = \
+        _pos_clean_string(str(row[4])), _pos_clean_string(str(row[5])), row[3], _pos_clean_string(str(row[1])), _pos_clean_string(str(row[2])), \
+        _pos_clean_string(str(row[6])), _pos_clean_string(str(row[7])), _pos_clean_string(str(row[8])), _pos_to_float(row[10]), \
+        _pos_to_float(row[11]), _pos_to_float(row[13]), _pos_to_float(row[14])
         ma_thue_percent = _pos_to_float(row[15]) if row[15] is not None else 8.0
     except IndexError:
         raise ValueError("Lỗi đọc cột từ file bảng kê POS. Vui lòng đảm bảo file có đủ các cột từ A đến P.")
+    
     upsse_row[0] = ma_kh if ma_kh and len(ma_kh) <= 9 else details['g5_val']
     upsse_row[1] = ten_kh
-    if isinstance(ngay_hd_raw, datetime): upsse_row[2] = ngay_hd_raw
-    else: upsse_row[2] = ngay_hd_raw
+    
+    # SỬA LỖI: Định dạng ngày thành chuỗi dd/mm/yyyy
+    if isinstance(ngay_hd_raw, datetime):
+        upsse_row[2] = ngay_hd_raw.strftime('%d/%m/%Y')
+    else:
+        upsse_row[2] = str(ngay_hd_raw).split(' ')[0]
+
     if details['b5_val'] == "Nguyễn Huệ": upsse_row[3] = f"HN{so_hd[-6:]}"
     elif details['b5_val'] == "Mai Linh": upsse_row[3] = f"MM{so_hd[-6:]}"
     else: upsse_row[3] = f"{so_ct[-2:]}{so_hd[-6:]}"
+    
     upsse_row[4] = f"1{so_ct}" if so_ct else ''
     upsse_row[5] = f"Xuất bán lẻ theo hóa đơn số {upsse_row[3]}"
     upsse_row[6] = details['lookup_table'].get(product_name.lower(), '')
@@ -209,17 +180,28 @@ def _pos_add_summary_row(original_source_rows, product_name, details, product_ta
     so_ct = _pos_clean_string(str(sample_row[1]))
     new_row[0] = details['g5_val']
     new_row[1] = f"Khách hàng mua {product_name} không lấy hóa đơn"
-    if isinstance(ngay_hd_raw, datetime): new_row[2] = ngay_hd_raw
-    else: new_row[2] = ngay_hd_raw
+
+    # SỬA LỖI: Định dạng ngày thành chuỗi dd/mm/yyyy
+    if isinstance(ngay_hd_raw, datetime):
+        new_row[2] = ngay_hd_raw.strftime('%d/%m/%Y')
+    else:
+        new_row[2] = str(ngay_hd_raw).split(' ')[0]
+
     new_row[4] = f"1{so_ct}" if so_ct else ''
-    value_C_dt = new_row[2] if isinstance(new_row[2], datetime) else datetime.now()
     value_E = _pos_clean_string(new_row[4])
     suffix_d_map = {"Xăng E5 RON 92-II": "5" if is_new_price_period else "1", "Xăng RON 95-III": "6" if is_new_price_period else "2", "Dầu DO 0,05S-II": "7" if is_new_price_period else "3", "Dầu DO 0,001S-V": "8" if is_new_price_period else "4"}
     suffix_d = suffix_d_map.get(product_name, "")
-    date_part = f"{value_C_dt.day:02d}{value_C_dt.month:02d}"
+    date_part = ""
+    try:
+        dt_obj = datetime.strptime(new_row[2], '%d/%m/%Y')
+        date_part = f"{dt_obj.day:02d}{dt_obj.month:02d}"
+    except (ValueError, TypeError):
+        pass # Bỏ qua nếu không parse được, date_part sẽ rỗng
+    
     if details['b5_val'] == "Nguyễn Huệ": new_row[3] = f"HNBK{date_part}.{suffix_d}"
     elif details['b5_val'] == "Mai Linh": new_row[3] = f"MMBK{date_part}.{suffix_d}"
     else: new_row[3] = f"{value_E[-2:]}BK{date_part}.{suffix_d}"
+
     new_row[5] = f"Xuất bán lẻ theo hóa đơn số {new_row[3]}"
     new_row[6] = details['lookup_table'].get(product_name.lower(), '')
     new_row[7], new_row[8] = product_name, "Lít"
@@ -278,7 +260,6 @@ def _pos_generate_upsse_rows(source_data_rows, static_data, selected_chxd, is_ne
     return final_rows
 
 def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, **kwargs):
-    # CẬP NHẬT: Gọi đến file Data_HDDT.xlsx
     static_data = _pos_get_static_data("Data_HDDT.xlsx")
     try:
         bkhd_wb = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
@@ -287,11 +268,8 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
         if not chxd_details: raise ValueError(f"Không tìm thấy thông tin cho CHXD: '{selected_chxd}'")
         b5_bkhd = _pos_clean_string(str(bkhd_ws['B5'].value))
         f5_norm = _pos_clean_string(chxd_details['f5_val_full'])
-        
-        # SỬA LỖI: Chỉ so sánh 6 ký tự cuối
         if f5_norm and len(f5_norm) >= 6 and f5_norm[-6:] != b5_bkhd:
             raise ValueError(f"Lỗi dữ liệu: Mã cửa hàng không khớp.\n- Mã trong Bảng kê (ô B5): '{b5_bkhd}'\n- Mã trong file cấu hình (6 ký tự cuối cột K): '{f5_norm[-6:]}'")
-        
         all_source_rows = list(bkhd_ws.iter_rows(min_row=5, values_only=True))
         if price_periods == '1':
             processed_rows = _pos_generate_upsse_rows(all_source_rows, static_data, selected_chxd, is_new_price_period=False)
@@ -315,7 +293,7 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
         raise e
 
 # ==============================================================================
-# KHỐI 2: LOGIC HDDT (ĐÃ ỔN ĐỊNH VÀ SỬA ĐỊNH DẠNG NGÀY)
+# KHỐI 2: LOGIC HDDT (Đã ổn định)
 # ==============================================================================
 def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
     
