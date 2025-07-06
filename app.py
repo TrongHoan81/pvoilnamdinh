@@ -2,20 +2,22 @@ from flask import Flask, request, render_template, flash, redirect, url_for, sen
 import io
 import base64
 import zipfile
+import os
 
 # Import hàm điều phối duy nhất từ logic_handler
 from logic_handler import process_unified_file
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'a_very_strong_and_unified_secret_key'
+# Sử dụng biến môi trường cho SECRET_KEY để bảo mật hơn trên server
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_fallback_secret_key_for_development')
 
 def get_chxd_list():
     """Đọc danh sách CHXD từ file text để hiển thị trên giao diện."""
     try:
+        # Giả sử file DS_CHXD.txt nằm cùng thư mục với app.py
         with open("DS_CHXD.txt", "r", encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip()]
     except FileNotFoundError:
-        # Nếu không có file, trả về danh sách trống và báo lỗi
         flash("Lỗi nghiêm trọng: Không tìm thấy file DS_CHXD.txt!", "danger")
         return []
     except Exception as e:
@@ -80,6 +82,7 @@ def process():
             return send_file(zip_buffer, as_attachment=True, download_name='UpSSE_2_giai_doan.zip', mimetype='application/zip')
 
         elif isinstance(result, io.BytesIO):
+            result.seek(0) # Đảm bảo con trỏ file ở đầu
             return send_file(result, as_attachment=True, download_name='UpSSE.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         
         else:
@@ -92,5 +95,8 @@ def process():
 
     return redirect(url_for('index'))
 
+# --- DÒNG QUAN TRỌNG ĐỂ KHỞI ĐỘNG SERVER ---
+# Render sẽ sử dụng dòng này để chạy ứng dụng của bạn
 if __name__ == '__main__':
-    app.run(debug=True)
+    # port=os.environ.get('PORT', 5000) để Render có thể tự gán cổng
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
