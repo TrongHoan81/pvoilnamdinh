@@ -39,38 +39,33 @@ def _create_upsse_workbook_shared():
     return wb
 
 # ==============================================================================
-# HÀM NHẬN DIỆN LOẠI BẢNG KÊ (ĐÃ SỬA CHÍNH XÁC THEO HÌNH ẢNH)
+# HÀM NHẬN DIỆN LOẠI BẢNG KÊ (ĐÃ ỔN ĐỊNH)
 # ==============================================================================
 def detect_report_type(file_content_bytes):
-    """
-    Hàm nhận diện đơn giản và đáng tin cậy nhất, dựa trên gợi ý của người dùng.
-    """
     try:
         wb = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
         ws = wb.active
-
-        # Cách 1: Kiểm tra cho file POS (đáng tin cậy nhất)
-        # SỬA LỖI: Kiểm tra chính xác ô B4 có phải là 'Seri' không.
         if ws['B4'].value and 'seri' == str(ws['B4'].value).lower().strip():
             return 'POS'
-
-        # Cách 2: Kiểm tra cho file HDDT (đã ổn định)
-        # Quét dòng 9 để tìm header đặc trưng nhất
         for cell in ws[9]:
             if cell.value and 'số công văn (số tham chiếu)' in str(cell.value).lower():
                 return 'HDDT'
-                
     except Exception:
-        # Nếu có bất kỳ lỗi nào khi đọc file, trả về UNKNOWN
         return 'UNKNOWN'
-
     return 'UNKNOWN'
 
 # ==============================================================================
-# KHỐI 1: LOGIC GỐC CỦA ỨNG DỤNG POS (GIỮ NGUYÊN 100%)
+# KHỐI 1: LOGIC GỐC CỦA ỨNG DỤNG POS (SỬA LỖI TÌM CỘT)
 # ==============================================================================
 def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, **kwargs):
     
+    # --- Hàm nội bộ để tìm cột linh hoạt ---
+    def find_column_name(df, keyword):
+        for col in df.columns:
+            if keyword in str(col).lower():
+                return col
+        raise ValueError(f"Không tìm thấy cột chứa từ khóa '{keyword}' trong file POS.")
+
     def _get_static_data_pos(file_path):
         try:
             wb = load_workbook(file_path, data_only=True)
@@ -98,25 +93,25 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
         except FileNotFoundError: return None, "Lỗi: Không tìm thấy file Data_POS.xlsx."
         except Exception as e: return None, f"Lỗi khi đọc file Data_POS.xlsx: {e}"
 
-    def _create_pos_invoice_row(row, final_date, details, static_data):
+    def _create_pos_invoice_row(row, final_date, details, static_data, cols):
         new_row = [''] * 37
         new_row[0] = details['g4_val']
-        new_row[1] = new_row[31] = _clean_string_shared(row['Tên khách hàng'])
+        new_row[1] = new_row[31] = _clean_string_shared(row[cols['ten_kh']])
         new_row[2] = final_date
-        new_row[3] = f"{_clean_string_shared(row['Séri'])}{int(_to_float_shared(row['Số']))}"
-        new_row[4] = _clean_string_shared(row['Séri'])
+        new_row[3] = f"{_clean_string_shared(row[cols['seri']])}{int(_to_float_shared(row[cols['so']]))}"
+        new_row[4] = _clean_string_shared(row[cols['seri']])
         new_row[5] = f"Xuất bán hàng theo hóa đơn số {new_row[3]}"
-        new_row[7] = _clean_string_shared(row['Hàng hóa'])
+        new_row[7] = _clean_string_shared(row[cols['hang_hoa']])
         new_row[8] = "Lít"
         new_row[9] = details['g5_val']
-        new_row[12] = _to_float_shared(row['Số lượng'])
+        new_row[12] = _to_float_shared(row[cols['sl']])
         tmt_value = static_data['tmt_map'].get(new_row[7], 0)
-        new_row[13] = _to_float_shared(row['Đơn giá(đã có thuế GTGT)']) - tmt_value
-        new_row[14] = _to_float_shared(row['Tổng tiền thanh toán']) - _to_float_shared(row['Tiền thuế GTGT']) - round(tmt_value * new_row[12], 0)
-        new_row[17] = _format_tax_code_shared(_to_float_shared(row['Thuế GTGT']))
+        new_row[13] = _to_float_shared(row[cols['don_gia']]) - tmt_value
+        new_row[14] = _to_float_shared(row[cols['tong_tien']]) - _to_float_shared(row[cols['tien_thue']]) - round(tmt_value * new_row[12], 0)
+        new_row[17] = _format_tax_code_shared(_to_float_shared(row[cols['thue_gtgt']]))
         new_row[18], new_row[19], new_row[20], new_row[21] = details['t_val'], details['u_val'], details['v_val'], details['w_val']
-        new_row[33] = _clean_string_shared(row['Mã số thuế'])
-        new_row[36] = _to_float_shared(row['Tiền thuế GTGT']) - round(tmt_value * new_row[12] * (_to_float_shared(new_row[17]) / 100.0), 0)
+        new_row[33] = _clean_string_shared(row[cols['mst']])
+        new_row[36] = _to_float_shared(row[cols['tien_thue']]) - round(tmt_value * new_row[12] * (_to_float_shared(new_row[17]) / 100.0), 0)
         return new_row
 
     def _create_pos_summary_row(product_name, data, final_date, details, static_data, is_new_price, selected_chxd):
@@ -155,26 +150,42 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
     static_data, error = _get_static_data_pos("Data_POS.xlsx")
     if error: raise ValueError(error)
     df = pd.read_excel(io.BytesIO(file_content_bytes), header=4)
-    df.columns = [_clean_string_shared(col) for col in df.columns]
+    
+    # --- SỬA LỖI: Tìm tên cột một cách linh hoạt ---
+    cols = {
+        'sl': find_column_name(df, 'số lượng'),
+        'ngay': find_column_name(df, 'ngày'),
+        'ten_kh': find_column_name(df, 'tên khách hàng'),
+        'hang_hoa': find_column_name(df, 'hàng hóa'),
+        'don_gia': find_column_name(df, 'đơn giá(đã có thuế gtgt)'),
+        'tong_tien': find_column_name(df, 'tổng tiền thanh toán'),
+        'tien_thue': find_column_name(df, 'tiền thuế gtgt'),
+        'thue_gtgt': find_column_name(df, 'thuế gtgt'),
+        'seri': find_column_name(df, 'séri'),
+        'so': find_column_name(df, 'số'),
+        'mst': find_column_name(df, 'mã số thuế')
+    }
+
     df = df.dropna(how='all')
-    df = df[df['Số lượng'].apply(_to_float_shared) > 0]
+    df = df[df[cols['sl']].apply(_to_float_shared) > 0]
     if df.empty: raise ValueError("Không có dữ liệu hợp lệ (Số lượng > 0) trong file POS.")
-    final_date = pd.to_datetime(df['Ngày'].iloc[0]).strftime('%d/%m/%Y')
+    final_date = pd.to_datetime(df[cols['ngay']].iloc[0]).strftime('%d/%m/%Y')
     chxd_details = static_data['chxd_details'].get(selected_chxd)
     if not chxd_details: raise ValueError(f"Không tìm thấy cấu hình cho CHXD: {selected_chxd}")
+    
     def _process_rows(dataframe, is_new_price):
         processed_rows, summary_data = [], {}
         for _, row in dataframe.iterrows():
-            product_name = _clean_string_shared(row['Hàng hóa'])
-            if "không lấy hóa đơn" in _clean_string_shared(row['Tên khách hàng']):
+            product_name = _clean_string_shared(row[cols['hang_hoa']])
+            if "không lấy hóa đơn" in _clean_string_shared(row[cols['ten_kh']]):
                 if product_name not in summary_data:
-                    summary_data[product_name] = {'sl': 0, 'tt': 0, 'thue': 0, 'tienthuegtgt': 0, 'dongia': _to_float_shared(row['Đơn giá(đã có thuế GTGT)'])}
-                summary_data[product_name]['sl'] += _to_float_shared(row['Số lượng'])
-                summary_data[product_name]['tt'] += _to_float_shared(row['Tổng tiền thanh toán'])
-                summary_data[product_name]['thue'] += _to_float_shared(row['Thuế GTGT'])
-                summary_data[product_name]['tienthuegtgt'] += _to_float_shared(row['Tiền thuế GTGT'])
+                    summary_data[product_name] = {'sl': 0, 'tt': 0, 'thue': 0, 'tienthuegtgt': 0, 'dongia': _to_float_shared(row[cols['don_gia']])}
+                summary_data[product_name]['sl'] += _to_float_shared(row[cols['sl']])
+                summary_data[product_name]['tt'] += _to_float_shared(row[cols['tong_tien']])
+                summary_data[product_name]['thue'] += _to_float_shared(row[cols['thue_gtgt']])
+                summary_data[product_name]['tienthuegtgt'] += _to_float_shared(row[cols['tien_thue']])
             else:
-                processed_rows.append(_create_pos_invoice_row(row, final_date, chxd_details, static_data))
+                processed_rows.append(_create_pos_invoice_row(row, final_date, chxd_details, static_data, cols))
         for product, data in summary_data.items():
             processed_rows.append(_create_pos_summary_row(product, data, final_date, chxd_details, static_data, is_new_price, selected_chxd))
         final_df_rows = []
@@ -183,6 +194,7 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
             tmt_value = static_data['tmt_map'].get(row_data[7], 0)
             if tmt_value > 0: final_df_rows.append(_create_pos_tmt_row(row_data, tmt_value, chxd_details))
         return final_df_rows
+
     if price_periods == '1':
         all_rows_for_df = _process_rows(df, is_new_price=False)
         final_wb = _create_upsse_workbook_shared()
@@ -193,7 +205,7 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
         return output
     else:
         if not new_price_invoice_number: raise ValueError("Vui lòng nhập số hóa đơn của giá mới.")
-        split_idx = df.index[df['Số'].apply(_to_float_shared) == _to_float_shared(new_price_invoice_number)].tolist()
+        split_idx = df.index[df[cols['so']].apply(_to_float_shared) == _to_float_shared(new_price_invoice_number)].tolist()
         if not split_idx: raise ValueError(f"Không tìm thấy số hóa đơn '{new_price_invoice_number}'")
         df_old, df_new = df.loc[:split_idx[0]-1], df.loc[split_idx[0]:]
         wb_old, wb_new = _create_upsse_workbook_shared(), _create_upsse_workbook_shared()
