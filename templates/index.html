@@ -1,105 +1,125 @@
-from flask import Flask, request, render_template, flash, redirect, url_for, send_file
-import io
-import base64
-import zipfile
-import os
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Công cụ đồng bộ SSE (Hợp nhất)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes blinker { 50% { opacity: 0.7; } }
+        .blinking-warning { animation: blinker 1.5s linear infinite; }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen py-8">
 
-# Import hàm điều phối duy nhất từ logic_handler
-from logic_handler import process_unified_file
+    <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl p-8">
+        <div class="text-center mb-6">
+            <h1 class="text-2xl font-bold text-blue-600">Công cụ đồng bộ dữ liệu SSE</h1>
+            <p class="text-gray-600">Tự động nhận diện và xử lý Bảng kê từ POS & HĐĐT</p>
+        </div>
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_strong_and_unified_secret_key')
+        <!-- Vùng hiển thị thông báo -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-4 p-4 rounded-md 
+                        {% if category == 'danger' %} bg-red-100 border border-red-400 text-red-700
+                        {% elif category == 'warning' %} bg-yellow-100 border border-yellow-400 text-yellow-700
+                        {% else %} bg-green-100 border border-green-400 text-green-700
+                        {% endif %}" role="alert">
+                        {{ message | safe }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
 
-def get_chxd_list():
-    """Đọc danh sách CHXD từ file text để hiển thị trên giao diện."""
-    try:
-        with open("DS_CHXD.txt", "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        flash("Lỗi nghiêm trọng: Không tìm thấy file DS_CHXD.txt!", "danger")
-        return []
-    except Exception as e:
-        flash(f"Lỗi khi đọc file DS_CHXD.txt: {e}", "danger")
-        return []
+        <!-- Form chính -->
+        <form action="{{ url_for('process') }}" method="post" enctype="multipart/form-data" class="space-y-6">
+            
+            <!-- Vùng xác nhận ngày (chỉ hiển thị khi logic HDDT yêu cầu) -->
+            {% if date_ambiguous %}
+            <div id="date-confirmation-container" class="p-4 border-2 border-dashed border-red-400 rounded-lg bg-red-50">
+                <h3 class="text-lg font-bold text-red-700 mb-2">Yêu cầu xác nhận ngày tháng</h3>
+                <p class="text-sm text-gray-800 mb-4">Hệ thống không thể xác định ngày tháng chính xác. Vui lòng chọn ngày đúng cho bảng kê:</p>
+                <div class="flex items-center justify-center space-x-6">
+                    {% for option in date_options %}
+                    <label class="flex items-center p-3 border rounded-md cursor-pointer hover:bg-red-100">
+                        <input type="radio" name="confirmed_date" value="{{ option.value }}" class="h-5 w-5 text-red-600" required>
+                        <span class="ml-3 text-lg font-medium text-gray-900">{{ option.text }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <input type="hidden" name="file_content_b64" value="{{ form_data.encoded_file }}">
+                <input type="hidden" name="chxd" value="{{ form_data.selected_chxd }}">
+                <input type="hidden" name="price_periods" value="{{ form_data.price_periods }}">
+                <input type="hidden" name="invoice_number" value="{{ form_data.invoice_number }}">
+            </div>
+            {% endif %}
 
-@app.route('/', methods=['GET'])
-def index():
-    """Hiển thị trang upload chính."""
-    chxd_list = get_chxd_list()
-    # Truyền vào một dict rỗng để template không bị lỗi ở lần tải đầu tiên
-    return render_template('index.html', chxd_list=chxd_list, form_data={})
+            <!-- Các trường nhập liệu -->
+            <div>
+                <label for="chxd" class="block text-lg font-medium text-gray-700 mb-2">1. Chọn Cửa Hàng Xăng Dầu (CHXD):</label>
+                <select id="chxd" name="chxd" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm">
+                    <option value="" disabled selected>-- Vui lòng chọn --</option>
+                    {% for item in chxd_list %}
+                        <option value="{{ item }}">{{ item }}</option>
+                    {% endfor %}
+                </select>
+            </div>
 
-@app.route('/process', methods=['POST'])
-def process():
-    """Xử lý file tải lên bằng logic hợp nhất."""
-    # Lấy danh sách CHXD để có thể render lại trang nếu có lỗi
-    chxd_list = get_chxd_list()
-    try:
-        form_data = {
-            "selected_chxd": request.form.get('chxd'),
-            "price_periods": request.form.get('price_periods'),
-            "invoice_number": request.form.get('invoice_number', '').strip(),
-            "confirmed_date": request.form.get('confirmed_date'),
-            "encoded_file": request.form.get('file_content_b64')
+            <div>
+                 <label class="block text-lg font-medium text-gray-700 mb-2">2. Chọn giai đoạn giá:</label>
+                <div class="mt-2 flex items-center space-x-6">
+                    <label class="flex items-center">
+                        <input type="radio" name="price_periods" value="1" class="h-4 w-4 text-indigo-600" checked onchange="toggleInvoiceInput()">
+                        <span class="ml-2 text-gray-700">1 Giai đoạn giá</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="price_periods" value="2" class="h-4 w-4 text-indigo-600" onchange="toggleInvoiceInput()">
+                        <span class="ml-2 text-gray-700">2 Giai đoạn giá</span>
+                    </label>
+                </div>
+            </div>
+
+            <div id="invoice-input-container" class="hidden">
+                <label for="invoice_number" class="block text-lg font-medium text-gray-700 mb-2">Nhập số hóa đơn đầu tiên của giá mới:</label>
+                <input type="text" name="invoice_number" id="invoice_number" placeholder="Nhập chính xác số hóa đơn" class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 rounded-md shadow-sm">
+            </div>
+
+            {% if not date_ambiguous %}
+            <div>
+                <label for="file" class="block text-lg font-medium text-gray-700 mb-2">3. Tải lên file Bảng kê:</label>
+                <input type="file" name="file" id="file" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+            </div>
+            {% endif %}
+            
+            <!-- Nút bấm -->
+            <div>
+                <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    {% if date_ambiguous %} Xác nhận và Xử lý lại {% else %} Xử lý và Tải xuống {% endif %}
+                </button>
+                <div class="mt-4 text-center blinking-warning bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-md">
+                    <p class="font-bold text-red-600">Lưu ý quan trọng!</p>
+                    <p class="text-sm text-red-600">Sau khi tải về, bạn hãy mở file lên, sau đó ấn lưu (Ctrl+S) trước khi đồng bộ lên SSE.</p>
+                </div>
+            </div>
+        </form>
+
+        <div class="mt-8 border-t pt-4 text-center">
+            <p class="text-xs text-gray-600">Nếu gặp khó khăn, vui lòng liên hệ tác giả để được hỗ trợ.</p>
+            <p class="text-xs text-gray-600">Bản quyền thuộc về Nguyễn Trọng Hoàn - 0902069469</p>
+        </div>
+    </div>
+
+    <script>
+        function toggleInvoiceInput() {
+            const isTwoPeriods = document.querySelector('input[name="price_periods"]:checked').value === '2';
+            const container = document.getElementById('invoice-input-container');
+            const input = document.getElementById('invoice_number');
+            container.classList.toggle('hidden', !isTwoPeriods);
+            input.required = isTwoPeriods;
+            if (!isTwoPeriods) input.value = '';
         }
-
-        if not form_data["selected_chxd"]:
-            flash('Vui lòng chọn CHXD.', 'warning')
-            # Khi redirect, không cần truyền lại chxd_list vì route '/' sẽ tự lấy
-            return redirect(url_for('index'))
-
-        file_content = None
-        if form_data["encoded_file"]:
-            file_content = base64.b64decode(form_data["encoded_file"])
-        elif 'file' in request.files and request.files['file'].filename != '':
-            file_content = request.files['file'].read()
-        else:
-            flash('Vui lòng tải lên file Bảng kê.', 'warning')
-            return redirect(url_for('index'))
-
-        # Gọi hàm điều phối duy nhất
-        result = process_unified_file(
-            file_content=file_content, 
-            selected_chxd=form_data["selected_chxd"],
-            price_periods=form_data["price_periods"],
-            new_price_invoice_number=form_data["invoice_number"],
-            confirmed_date_str=form_data["confirmed_date"]
-        )
-        
-        # Xử lý kết quả trả về
-        if isinstance(result, dict) and result.get('choice_needed'):
-            # SỬA LỖI: Lưu lại file để dùng cho lần submit sau
-            form_data["encoded_file"] = base64.b64encode(file_content).decode('utf-8')
-            # Truyền lại tất cả dữ liệu đã có của form để giữ lựa chọn
-            return render_template('index.html', chxd_list=chxd_list, date_ambiguous=True, date_options=result['options'], form_data=form_data)
-        
-        elif isinstance(result, dict) and 'old' in result:
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                if result.get('old'):
-                    result['old'].seek(0)
-                    zipf.writestr('UpSSE_gia_cu.xlsx', result['old'].read())
-                if result.get('new'):
-                    result['new'].seek(0)
-                    zipf.writestr('UpSSE_gia_moi.xlsx', result['new'].read())
-            zip_buffer.seek(0)
-            return send_file(zip_buffer, as_attachment=True, download_name='UpSSE_2_giai_doan.zip', mimetype='application/zip')
-
-        elif isinstance(result, io.BytesIO):
-            result.seek(0)
-            return send_file(result, as_attachment=True, download_name='UpSSE.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        
-        else:
-            raise ValueError("Hàm xử lý không trả về kết quả hợp lệ.")
-
-    except (ValueError, NotImplementedError) as ve:
-        flash(str(ve), 'danger')
-        # SỬA LỖI: Render lại trang với các lựa chọn đã có thay vì redirect
-        return render_template('index.html', chxd_list=chxd_list, form_data=request.form)
-    except Exception as e:
-        flash(f"Đã xảy ra lỗi không mong muốn: {e}", 'danger')
-        return render_template('index.html', chxd_list=chxd_list, form_data=request.form)
-
-# --- DÒNG QUAN TRỌNG ĐỂ KHỞI ĐỘNG SERVER ---
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    </script>
+</body>
+</html>
