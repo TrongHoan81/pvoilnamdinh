@@ -198,7 +198,6 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
 # ==============================================================================
 def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
     
-    # --- Các hàm nội bộ của logic HDDT (từ file gốc) ---
     def _clean_string_hddt(s):
         if s is None: return ""
         cleaned_s = str(s).strip()
@@ -220,6 +219,14 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
             return f"{round(f_value):02d}"
         except (ValueError, TypeError): return ""
     
+    def _create_upsse_workbook_hddt():
+        headers = ["Mã khách", "Tên khách hàng", "Ngày", "Số hóa đơn", "Ký hiệu", "Diễn giải", "Mã hàng", "Tên mặt hàng", "Đvt", "Mã kho", "Mã vị trí", "Mã lô", "Số lượng", "Giá bán", "Tiền hàng", "Mã nt", "Tỷ giá", "Mã thuế", "Tk nợ", "Tk doanh thu", "Tk giá vốn", "Tk thuế có", "Cục thuế", "Vụ việc", "Bộ phận", "Lsx", "Sản phẩm", "Hợp đồng", "Phí", "Khế ước", "Nhân viên bán", "Tên KH(thuế)", "Địa chỉ (thuế)", "Mã số Thuế", "Nhóm Hàng", "Ghi chú", "Tiền thuế"]
+        wb = Workbook()
+        ws = wb.active
+        for _ in range(4): ws.append([''] * len(headers))
+        ws.append(headers)
+        return wb
+
     def _load_static_data_hddt(data_file_path, mahh_file_path, dskh_file_path):
         try:
             static_data = {}
@@ -341,7 +348,7 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
             summary_row[36] = round(TT_goc)
             original_invoice_rows.append(summary_row)
             bvmt_rows.append(_create_hddt_bvmt_row(summary_row, phi_bvmt, static_data, khu_vuc))
-        upsse_wb = _create_upsse_workbook_shared()
+        upsse_wb = _create_upsse_workbook_hddt()
         for row_data in original_invoice_rows + bvmt_rows: upsse_wb.active.append(row_data)
         output_buffer = io.BytesIO()
         upsse_wb.save(output_buffer)
@@ -358,7 +365,7 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
     else:
         unique_dates = set()
         for row in bkhd_ws.iter_rows(min_row=11, values_only=True):
-            if _to_float_shared(row[8] if len(row) > 8 else None) > 0:
+            if _to_float_hddt(row[8] if len(row) > 8 else None) > 0:
                 date_val = row[20] if len(row) > 20 else None
                 if isinstance(date_val, datetime):
                     unique_dates.add(date_val.date())
