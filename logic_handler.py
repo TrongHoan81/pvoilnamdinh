@@ -16,7 +16,6 @@ def clean_string(s):
 def to_float(value):
     if value is None: return 0.0
     try:
-        # Hỗ trợ cả dấu phẩy và không có dấu phẩy
         return float(str(value).replace(',', '').strip())
     except (ValueError, TypeError):
         return 0.0
@@ -40,21 +39,47 @@ def _create_upsse_workbook():
     return wb
 
 # ==============================================================================
-# HÀM NHẬN DIỆN LOẠI BẢNG KÊ
+# HÀM NHẬN DIỆN LOẠI BẢNG KÊ (ĐÃ NÂNG CẤP)
 # ==============================================================================
 def detect_report_type(worksheet):
+    """
+    Phân tích worksheet để xác định loại bảng kê (POS hoặc HDDT).
+    Hàm này đã được làm cho linh hoạt hơn.
+    """
+    # --- Check 1: Dựa vào giá trị ô cố định (đáng tin cậy nhất) ---
     try:
-        pos_headers = {clean_string(cell.value) for cell in worksheet[5]}
-        hddt_headers = {clean_string(cell.value) for cell in worksheet[10]}
-        pos_characteristic_cols = {'Séri', 'Số', 'Đơn giá(đã có thuế GTGT)'}
-        hddt_characteristic_cols = {'Số công văn (Số tham chiếu)', 'Mã KH (FAST)', 'MST khách hàng'}
-        if pos_characteristic_cols.issubset(pos_headers): return 'POS'
-        if hddt_characteristic_cols.issubset(hddt_headers): return 'HDDT'
-    except IndexError: pass
+        # Chuyển về chữ thường và dùng 'in' để so sánh cho chắc chắn
+        cell_b5_value = clean_string(worksheet['B5'].value).lower()
+        cell_a1_value = clean_string(worksheet['A1'].value).lower()
+        
+        if 'bảng thống kê hóa đơn' in cell_b5_value:
+            return 'POS'
+        if 'báo cáo' in cell_a1_value:
+            return 'HDDT'
+    except Exception:
+        # Bỏ qua nếu không đọc được ô, thử cách tiếp theo
+        pass
+
+    # --- Check 2: Dựa vào tên cột đặc trưng ---
     try:
-        if clean_string(worksheet['B5'].value) == 'BẢNG THỐNG KÊ HÓA ĐƠN': return 'POS'
-        if clean_string(worksheet['A1'].value) == 'BÁO CÁO': return 'HDDT'
-    except Exception: return 'UNKNOWN'
+        # Đọc các header và chuyển thành chữ thường
+        pos_headers = {clean_string(cell.value).lower() for cell in worksheet[5]}
+        hddt_headers = {clean_string(cell.value).lower() for cell in worksheet[10]}
+
+        # Các cột đặc trưng (chữ thường)
+        pos_characteristic_cols = {'séri', 'số', 'đơn giá(đã có thuế gtgt)'}
+        hddt_characteristic_cols = {'số công văn (số tham chiếu)', 'mã kh (fast)', 'mst khách hàng'}
+
+        # Chỉ cần 2 trong 3 cột khớp là đủ để nhận diện
+        if sum(1 for col in pos_characteristic_cols if col in pos_headers) >= 2:
+            return 'POS'
+        if sum(1 for col in hddt_characteristic_cols if col in hddt_headers) >= 2:
+            return 'HDDT'
+            
+    except (IndexError, TypeError):
+        # Bỏ qua nếu file quá nhỏ hoặc có lỗi khi đọc header
+        pass
+
     return 'UNKNOWN'
 
 # ==============================================================================
@@ -104,7 +129,7 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
     df = pd.read_excel(io.BytesIO(file_content), header=4)
     df.columns = [clean_string(col) for col in df.columns]
     df = df.dropna(how='all')
-    df = df[to_float(df['Số lượng']) > 0]
+    df = df[df['Số lượng'].apply(to_float) > 0]
     if df.empty: raise ValueError("Không có dữ liệu hợp lệ (Số lượng > 0) trong file tải lên.")
     
     final_date = pd.to_datetime(df['Ngày'].iloc[0]).strftime('%d/%m/%Y')
@@ -142,7 +167,7 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
         all_rows_for_df.extend(process_rows(df, is_new_price=False))
     else: # 2 periods
         if not new_price_invoice_number: raise ValueError("Vui lòng nhập số hóa đơn đầu tiên của giá mới.")
-        split_idx = df.index[df['Số'] == to_float(new_price_invoice_number)].tolist()
+        split_idx = df.index[df['Số'].apply(to_float) == to_float(new_price_invoice_number)].tolist()
         if not split_idx: raise ValueError(f"Không tìm thấy số hóa đơn '{new_price_invoice_number}'")
         
         df_old = df.loc[:split_idx[0]-1]
@@ -219,7 +244,7 @@ def create_pos_tmt_row(original_row, tmt_value, details):
     tmt_row[9] = details['g5_val']
     tmt_row[13] = tmt_value
     tmt_row[14] = round(tmt_value * to_float(original_row[12]), 0)
-    tmt_row[18], tmt_row[19], tmt_row[20], tmt_row[21] = details['t_val'], details['u_val'], details['v_val'], details['w_val'] # Re-check these against data file
+    tmt_row[18], tmt_row[19], tmt_row[20], tmt_row[21] = details['t_val'], "51133", details['v_val'], "33313"
     tmt_row[36] = round(tmt_row[14] * tax_rate_decimal)
     tmt_row[5], tmt_row[31], tmt_row[32], tmt_row[33] = '', '', '', ''
     return tmt_row
@@ -231,7 +256,6 @@ def load_static_data_hddt():
     """Hàm đọc file Data_HDDT.xlsx và các file cấu hình khác cho HDDT."""
     try:
         static_data = {}
-        # --- Đọc file Data_HDDT.xlsx ---
         wb = load_workbook("Data_HDDT.xlsx", data_only=True)
         ws = wb.active
         chxd_list, tk_mk_map, khhd_map, chxd_to_khuvuc_map = [], {}, {}, {}
@@ -263,10 +287,8 @@ def load_static_data_hddt():
             "tk_no_bvmt_map": get_lookup_map(44, 46), "tk_dt_thue_bvmt_map": get_lookup_map(48, 50),
             "tk_gia_von_bvmt_value": ws['B51'].value, "tk_thue_co_bvmt_map": get_lookup_map(53, 55)
         })
-        # --- Đọc file MaHH.xlsx ---
         wb_mahh = load_workbook("MaHH.xlsx", data_only=True)
         static_data["ma_hang_map"] = {clean_string(r[0]): clean_string(r[2]) for r in wb_mahh.active.iter_rows(min_row=2, max_col=3, values_only=True) if r[0] and r[2]}
-        # --- Đọc file DSKH.xlsx ---
         wb_dskh = load_workbook("DSKH.xlsx", data_only=True)
         static_data["mst_to_makh_map"] = {clean_string(r[2]): clean_string(r[3]) for r in wb_dskh.active.iter_rows(min_row=2, max_col=4, values_only=True) if r[2]}
         return static_data, None
@@ -298,7 +320,9 @@ def process_hddt_report(file_content, selected_chxd, price_periods, new_price_in
         if the_date.day > 12: final_date = datetime(the_date.year, the_date.month, the_date.day)
         else:
             date1, date2 = datetime(the_date.year, the_date.month, the_date.day), datetime(the_date.year, the_date.day, the_date.month)
-            return {'choice_needed': True, 'options': [{'text': date1.strftime('%d/%m/%Y'), 'value': date1.strftime('%Y-%m-%d')}, {'text': date2.strftime('%d/%m/%Y'), 'value': date2.strftime('%Y-%m-%d')}]}
+            if date1 != date2:
+                return {'choice_needed': True, 'options': [{'text': date1.strftime('%d/%m/%Y'), 'value': date1.strftime('%Y-%m-%d')}, {'text': date2.strftime('%d/%m/%Y'), 'value': date2.strftime('%Y-%m-%d')}]}
+            final_date = date1
 
     all_rows = list(bkhd_ws.iter_rows(min_row=11, values_only=True))
     if price_periods == '1':
@@ -335,7 +359,7 @@ def _generate_upsse_from_hddt_rows(rows_to_process, static_data, selected_chxd, 
     for bkhd_row in rows_to_process:
         if to_float(bkhd_row[8] if len(bkhd_row) > 8 else None) <= 0: continue
         ten_kh, ten_mat_hang = clean_string(bkhd_row[3]), clean_string(bkhd_row[6])
-        is_anonymous, is_petrol = ("không lấy hóa đơn" in ten_kh), (ten_mat_hang in static_data['phi_bvmt_map'])
+        is_anonymous, is_petrol = ("không lấy hóa đơn" in ten_kh.lower()), (ten_mat_hang in static_data['phi_bvmt_map'])
         
         if not is_anonymous or not is_petrol:
             new_upsse_row = [''] * 37
@@ -438,3 +462,4 @@ def process_unified_file(file_content, selected_chxd, price_periods, new_price_i
 
     else:
         raise ValueError("Không thể tự động nhận diện loại Bảng kê. Vui lòng kiểm tra lại file Excel bạn đã tải lên.")
+
