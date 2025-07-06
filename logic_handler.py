@@ -37,8 +37,6 @@ def detect_report_type(file_content_bytes):
 
 # ==============================================================================
 # KHỐI 1: LOGIC XỬ LÝ BẢNG KÊ POS (ĐÃ CẬP NHẬT THEO FILE MỚI NHẤT)
-# Toàn bộ logic trong khối này được sao chép 100% từ file logic_handler.py
-# mà bạn đã cung cấp, đảm bảo tính ổn định và chính xác.
 # ==============================================================================
 
 # --- Các hàm trợ giúp cho POS ---
@@ -57,8 +55,8 @@ def _pos_clean_string(s):
         return ""
     return re.sub(r'\s+', ' ', str(s)).strip()
 
-def _pos_get_static_data(file_path="Data.xlsx"):
-    """Đọc dữ liệu cấu hình tĩnh từ file Data.xlsx cho logic POS."""
+def _pos_get_static_data(file_path):
+    """Đọc dữ liệu cấu hình tĩnh từ file được chỉ định cho logic POS."""
     try:
         wb = load_workbook(file_path, data_only=True)
         ws = wb.active
@@ -96,9 +94,11 @@ def _pos_get_static_data(file_path="Data.xlsx"):
             "v_lookup_table": get_lookup(53, 55), "u_value": ws['J36'].value,
             "chxd_detail_map": chxd_detail_map, "store_specific_x_lookup": store_specific_x_lookup
         }
+    except FileNotFoundError:
+        raise ValueError(f"Lỗi nghiêm trọng: Không tìm thấy file cấu hình '{file_path}'. Vui lòng đảm bảo file này tồn tại trong thư mục của ứng dụng.")
     except Exception as e:
         # Ném ra lỗi để app.py có thể bắt và hiển thị cho người dùng
-        raise ValueError(f"Lỗi khi đọc file cấu hình Data.xlsx: {e}")
+        raise ValueError(f"Lỗi khi đọc file cấu hình '{file_path}': {e}")
 
 def _pos_create_excel_buffer(processed_rows):
     """Tạo một file Excel trong bộ nhớ từ dữ liệu POS đã xử lý."""
@@ -341,7 +341,8 @@ def _pos_generate_upsse_rows(source_data_rows, static_data, selected_chxd, is_ne
 
 def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, **kwargs):
     """Hàm điều phối chính cho việc xử lý bảng kê POS."""
-    static_data = _pos_get_static_data("Data.xlsx")
+    # SỬA LỖI: Thay đổi tên file cấu hình cứng thành "Data_POS.xlsx"
+    static_data = _pos_get_static_data("Data_POS.xlsx")
     
     try:
         bkhd_wb = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
@@ -550,6 +551,7 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
         output_buffer.seek(0)
         return output_buffer
 
+    # SỬA LỖI: Gọi đúng tên file cấu hình cho HDDT
     static_data, error = _load_static_data_hddt("Data_HDDT.xlsx", "MaHH.xlsx", "DSKH.xlsx")
     if error: raise ValueError(error)
     bkhd_wb = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
@@ -598,7 +600,6 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
         result_new = _generate_upsse_from_hddt_rows(all_rows[split_index:], static_data, selected_chxd, final_date, suffix_map_new)
         if not result_old and not result_new: raise ValueError("Không có dữ liệu hợp lệ trong cả hai giai đoạn giá.")
         
-        # Sửa lỗi: Trả về một dictionary chứa các buffer
         output_dict = {}
         if result_old:
             result_old.seek(0)
