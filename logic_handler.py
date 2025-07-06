@@ -207,7 +207,7 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
 
 # ==============================================================================
 # KHỐI 2: TOÀN BỘ LOGIC GỐC CỦA ỨNG DỤNG HDDT
-# (SAO CHÉP 100% - KHÔNG THAY ĐỔI)
+# (SAO CHÉP 100% - KHÔNG THAY ĐỔI, CHỈ SỬA LỖI ĐỌC NGÀY)
 # ==============================================================================
 def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
     
@@ -374,11 +374,20 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
         for row in bkhd_ws.iter_rows(min_row=11, values_only=True):
             if _to_float_hddt(row[8] if len(row) > 8 else None) > 0:
                 date_val = row[20] if len(row) > 20 else None
-                if isinstance(date_val, datetime): unique_dates.add(date_val.date())
+                if isinstance(date_val, datetime):
+                    unique_dates.add(date_val.date())
+                # SỬA LỖI: Thêm lại logic đọc ngày tháng dạng SỐ (int, float)
+                elif isinstance(date_val, (int, float)):
+                    try:
+                        converted_date_obj = pd.to_datetime(date_val, unit='D', origin='1899-12-30').to_pydatetime()
+                        unique_dates.add(converted_date_obj.date())
+                    except (ValueError, TypeError):
+                        pass
                 elif isinstance(date_val, str):
                     try:
                         unique_dates.add(datetime.strptime(date_val, '%d/%m/%Y').date())
-                    except ValueError: continue
+                    except ValueError:
+                        continue
         if not unique_dates: raise ValueError("Không tìm thấy dữ liệu hóa đơn hợp lệ nào trong file Bảng kê.")
         if len(unique_dates) > 1: raise ValueError("Công cụ chỉ chạy được khi bạn kết xuất hóa đơn trong 1 ngày duy nhất.")
         the_date = unique_dates.pop()
