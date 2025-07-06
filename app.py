@@ -3,6 +3,8 @@ import io
 import base64
 import zipfile
 import os
+# Thêm thư viện openpyxl để đọc file Excel
+from openpyxl import load_workbook
 
 # Import hàm điều phối duy nhất từ logic_handler
 from logic_handler import process_unified_file
@@ -11,16 +13,30 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_strong_and_unified_secret_key')
 
 def get_chxd_list():
-    """Đọc danh sách CHXD từ file text để hiển thị trên giao diện."""
+    """
+    CẢI TIẾN: Đọc danh sách CHXD trực tiếp từ cột D của file Data_HDDT.xlsx
+    thay vì từ file DS_CHXD.txt.
+    """
+    chxd_list = []
     try:
-        with open("DS_CHXD.txt", "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
+        # Mở file cấu hình chính
+        wb = load_workbook("Data_HDDT.xlsx", data_only=True)
+        ws = wb.active
+        # Duyệt qua cột D (cột thứ 4) từ dòng 3 để lấy tên các CHXD
+        for row in ws.iter_rows(min_row=3, min_col=4, max_col=4, values_only=True):
+            chxd_name = row[0]
+            if chxd_name and isinstance(chxd_name, str) and chxd_name.strip():
+                chxd_list.append(chxd_name.strip())
+        
+        # Sắp xếp lại danh sách theo thứ tự alphabet để dễ nhìn
+        chxd_list.sort()
+        return chxd_list
+        
     except FileNotFoundError:
-        # Trong môi trường sản xuất, bạn có thể muốn log lỗi này thay vì flash
-        # flash("Lỗi nghiêm trọng: Không tìm thấy file DS_CHXD.txt!", "danger")
-        return ["CHXD Mẫu 1", "CHXD Mẫu 2"] # Trả về dữ liệu mẫu để app không bị sập
+        flash("Lỗi nghiêm trọng: Không tìm thấy file cấu hình Data_HDDT.xlsx!", "danger")
+        return [] # Trả về danh sách rỗng nếu file không tồn tại
     except Exception as e:
-        # flash(f"Lỗi khi đọc file DS_CHXD.txt: {e}", "danger")
+        flash(f"Lỗi khi đọc file Data_HDDT.xlsx: {e}", "danger")
         return []
 
 @app.route('/', methods=['GET'])
@@ -35,7 +51,6 @@ def process():
     chxd_list = get_chxd_list()
     form_data = {
         "selected_chxd": request.form.get('chxd'),
-        # SỬA ĐỔI: Mặc định là '1' nếu không có giá trị được gửi lên.
         "price_periods": request.form.get('price_periods', '1'),
         "invoice_number": request.form.get('invoice_number', '').strip(),
         "confirmed_date": request.form.get('confirmed_date'),
@@ -87,11 +102,9 @@ def process():
             return send_file(result, as_attachment=True, download_name='UpSSE.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         
         else:
-            # Trường hợp không mong muốn, có thể log lại để debug
             raise ValueError("Hàm xử lý không trả về kết quả hợp lệ.")
 
     except ValueError as ve:
-        # Thay thế \n bằng <br> để xuống dòng trong HTML
         flash(str(ve).replace('\n', '<br>'), 'danger')
         return render_template('index.html', chxd_list=chxd_list, form_data=form_data)
     except Exception as e:
