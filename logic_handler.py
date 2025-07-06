@@ -20,7 +20,6 @@ def detect_report_type(file_content_bytes):
         ws = wb.active
         
         # Kiểm tra cho file POS bằng ô B4
-        # Dùng str() và lower() để xử lý an toàn, tránh lỗi nếu ô trống hoặc có kiểu dữ liệu khác
         if ws['B4'].value and 'seri' in str(ws['B4'].value).lower().strip():
             return 'POS'
             
@@ -36,7 +35,7 @@ def detect_report_type(file_content_bytes):
     return 'UNKNOWN'
 
 # ==============================================================================
-# KHỐI 1: LOGIC XỬ LÝ BẢNG KÊ POS (ĐÃ CẬP NHẬT THEO FILE MỚI NHẤT)
+# KHỐI 1: LOGIC XỬ LÝ BẢNG KÊ POS (Đã ổn định)
 # ==============================================================================
 
 # --- Các hàm trợ giúp cho POS ---
@@ -97,7 +96,6 @@ def _pos_get_static_data(file_path):
     except FileNotFoundError:
         raise ValueError(f"Lỗi nghiêm trọng: Không tìm thấy file cấu hình '{file_path}'. Vui lòng đảm bảo file này tồn tại trong thư mục của ứng dụng.")
     except Exception as e:
-        # Ném ra lỗi để app.py có thể bắt và hiển thị cho người dùng
         raise ValueError(f"Lỗi khi đọc file cấu hình '{file_path}': {e}")
 
 def _pos_create_excel_buffer(processed_rows):
@@ -164,9 +162,9 @@ def _pos_process_single_row(row, details, selected_chxd):
     upsse_row[0] = ma_kh if ma_kh and len(ma_kh) <= 9 else details['g5_val']
     upsse_row[1] = ten_kh
     
-    if isinstance(ngay_hd_raw, datetime): upsse_row[2] = ngay_hd_raw.strftime('%Y-%m-%d')
+    if isinstance(ngay_hd_raw, datetime): upsse_row[2] = ngay_hd_raw.strftime('%d/%m/%Y')
     elif isinstance(ngay_hd_raw, str):
-        try: upsse_row[2] = datetime.strptime(ngay_hd_raw.split(' ')[0], '%d-%m-%Y').strftime('%Y-%m-%d')
+        try: upsse_row[2] = datetime.strptime(ngay_hd_raw.split(' ')[0], '%d-%m-%Y').strftime('%d/%m/%Y')
         except (ValueError, TypeError): upsse_row[2] = ngay_hd_raw
     else: upsse_row[2] = ngay_hd_raw
 
@@ -235,9 +233,9 @@ def _pos_add_summary_row(original_source_rows, product_name, details, product_ta
 
     new_row[0] = details['g5_val']
     new_row[1] = f"Khách hàng mua {product_name} không lấy hóa đơn"
-    if isinstance(ngay_hd_raw, datetime): new_row[2] = ngay_hd_raw.strftime('%Y-%m-%d')
+    if isinstance(ngay_hd_raw, datetime): new_row[2] = ngay_hd_raw.strftime('%d/%m/%Y')
     elif isinstance(ngay_hd_raw, str):
-        try: new_row[2] = datetime.strptime(ngay_hd_raw.split(' ')[0], '%d-%m-%Y').strftime('%Y-%m-%d')
+        try: new_row[2] = datetime.strptime(ngay_hd_raw.split(' ')[0], '%d-%m-%Y').strftime('%d/%m/%Y')
         except (ValueError, TypeError): new_row[2] = ngay_hd_raw
     else: new_row[2] = ngay_hd_raw
     new_row[4] = f"1{so_ct}" if so_ct else ''
@@ -254,12 +252,14 @@ def _pos_add_summary_row(original_source_rows, product_name, details, product_ta
     
     suffix_d = suffix_d_map.get(product_name, "")
     date_part = ""
-    if value_C and len(value_C) >= 10:
+    if value_C:
         try:
-            dt_obj = datetime.strptime(value_C, '%Y-%m-%d')
+            # Thử đọc định dạng dd/mm/yyyy trước
+            dt_obj = datetime.strptime(value_C, '%d/%m/%Y')
             date_part = f"{dt_obj.day:02d}{dt_obj.month:02d}"
-        except ValueError: pass 
-        
+        except ValueError: 
+            pass # Bỏ qua nếu không đúng định dạng
+            
     if details['b5_val'] == "Nguyễn Huệ": new_row[3] = f"HNBK{date_part}.{suffix_d}"
     elif details['b5_val'] == "Mai Linh": new_row[3] = f"MMBK{date_part}.{suffix_d}"
     else: new_row[3] = f"{value_E[-2:]}BK{date_part}.{suffix_d}"
@@ -341,7 +341,6 @@ def _pos_generate_upsse_rows(source_data_rows, static_data, selected_chxd, is_ne
 
 def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, **kwargs):
     """Hàm điều phối chính cho việc xử lý bảng kê POS."""
-    # SỬA LỖI: Thay đổi tên file cấu hình cứng thành "Data_POS.xlsx"
     static_data = _pos_get_static_data("Data_POS.xlsx")
     
     try:
@@ -386,11 +385,10 @@ def process_pos_report(file_content_bytes, selected_chxd, price_periods, new_pri
             return {'new': buffer_new, 'old': buffer_old}
             
     except Exception as e:
-        # Ném lại lỗi để tầng trên (app.py) có thể bắt và hiển thị cho người dùng
         raise e
 
 # ==============================================================================
-# KHỐI 2: LOGIC HDDT (ĐÃ ỔN ĐỊNH - KHÔNG THAY ĐỔI)
+# KHỐI 2: LOGIC HDDT (ĐÃ ỔN ĐỊNH VÀ SỬA ĐỊNH DẠNG NGÀY)
 # ==============================================================================
 def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_price_invoice_number, confirmed_date_str=None):
     
@@ -481,6 +479,9 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
 
     def _generate_upsse_from_hddt_rows(rows_to_process, static_data, selected_chxd, final_date, summary_suffix_map):
         if not rows_to_process: return None
+        # SỬA LỖI: Chuyển đổi đối tượng datetime thành chuỗi dd/mm/yyyy ngay từ đầu
+        final_date_str = final_date.strftime('%d/%m/%Y')
+        
         khu_vuc, ma_kho = static_data['chxd_to_khuvuc_map'].get(selected_chxd), static_data['tk_mk'].get(selected_chxd)
         tk_no, tk_doanh_thu, tk_gia_von, tk_thue_co = static_data['tk_no_map'].get(khu_vuc), static_data['tk_doanh_thu_map'].get(khu_vuc), static_data['tk_gia_von_value'], static_data['tk_thue_co_map'].get(khu_vuc)
         original_invoice_rows, bvmt_rows, summary_data = [], [], {}
@@ -491,7 +492,8 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
             is_anonymous, is_petrol = ("không lấy hóa đơn" in ten_kh.lower()), (ten_mat_hang in static_data['phi_bvmt_map'])
             if not is_anonymous or not is_petrol:
                 new_upsse_row = [''] * 37
-                new_upsse_row[9], new_upsse_row[1], new_upsse_row[31], new_upsse_row[2] = ma_kho, ten_kh, ten_kh, final_date
+                # SỬA LỖI: Sử dụng chuỗi ngày đã định dạng
+                new_upsse_row[9], new_upsse_row[1], new_upsse_row[31], new_upsse_row[2] = ma_kho, ten_kh, ten_kh, final_date_str
                 so_hd_goc = str(bkhd_row[19] or '').strip()
                 new_upsse_row[3] = f"HN{so_hd_goc[-6:]}" if selected_chxd == "Nguyễn Huệ" else f"{(str(bkhd_row[18] or '').strip())[-2:]}{so_hd_goc[-6:]}"
                 new_upsse_row[4] = _clean_string_hddt(bkhd_row[17]) + _clean_string_hddt(bkhd_row[18])
@@ -533,7 +535,8 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
             TH_TMT, TT_TMT = round(phi_bvmt * total_sl), round(phi_bvmt * total_sl * thue_suat)
             TT_goc, TH_goc = TTT - TT_TMT, TDT - TH_TMT - (TTT - TT_TMT) - TT_TMT
             summary_row[0], summary_row[1] = ma_kho, f"Khách hàng mua {product} không lấy hóa đơn"
-            summary_row[31], summary_row[2] = summary_row[1], final_date
+            # SỬA LỖI: Sử dụng chuỗi ngày đã định dạng
+            summary_row[31], summary_row[2] = summary_row[1], final_date_str
             summary_row[3] = f"{prefix}BK.{final_date.strftime('%d.%m')}.{summary_suffix_map.get(product, '')}"
             summary_row[4] = first_data['mau_so'] + first_data['ky_hieu']
             summary_row[5] = f"Xuất bán hàng theo hóa đơn số {summary_row[3]}"
@@ -551,7 +554,6 @@ def process_hddt_report(file_content_bytes, selected_chxd, price_periods, new_pr
         output_buffer.seek(0)
         return output_buffer
 
-    # SỬA LỖI: Gọi đúng tên file cấu hình cho HDDT
     static_data, error = _load_static_data_hddt("Data_HDDT.xlsx", "MaHH.xlsx", "DSKH.xlsx")
     if error: raise ValueError(error)
     bkhd_wb = load_workbook(io.BytesIO(file_content_bytes), data_only=True)
