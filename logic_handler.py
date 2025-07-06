@@ -39,45 +39,44 @@ def _create_upsse_workbook():
     return wb
 
 # ==============================================================================
-# HÀM NHẬN DIỆN LOẠI BẢNG KÊ (ĐÃ NÂNG CẤP)
+# HÀM NHẬN DIỆN LOẠI BẢNG KÊ (ĐÃ SỬA LỖI ĐỌC DÒNG)
 # ==============================================================================
 def detect_report_type(worksheet):
     """
     Phân tích worksheet để xác định loại bảng kê (POS hoặc HDDT).
-    Hàm này đã được làm cho linh hoạt hơn.
+    Hàm này đã được sửa lỗi đọc sai dòng dựa trên phản hồi của người dùng.
     """
     # --- Check 1: Dựa vào giá trị ô cố định (đáng tin cậy nhất) ---
     try:
-        # Chuyển về chữ thường và dùng 'in' để so sánh cho chắc chắn
-        cell_b5_value = clean_string(worksheet['B5'].value).lower()
-        cell_a1_value = clean_string(worksheet['A1'].value).lower()
-        
-        if 'bảng thống kê hóa đơn' in cell_b5_value:
+        # Bảng kê POS có tiêu đề ở dòng 4
+        cell_b4_value = clean_string(worksheet['B4'].value).lower()
+        if 'bảng thống kê hóa đơn' in cell_b4_value:
             return 'POS'
+            
+        # Bảng kê HDDT có tiêu đề ở dòng 1
+        cell_a1_value = clean_string(worksheet['A1'].value).lower()
         if 'báo cáo' in cell_a1_value:
             return 'HDDT'
     except Exception:
-        # Bỏ qua nếu không đọc được ô, thử cách tiếp theo
         pass
 
-    # --- Check 2: Dựa vào tên cột đặc trưng ---
+    # --- Check 2: Dựa vào tên cột đặc trưng (phương án dự phòng) ---
     try:
-        # Đọc các header và chuyển thành chữ thường
+        # Header POS ở dòng 5
         pos_headers = {clean_string(cell.value).lower() for cell in worksheet[5]}
-        hddt_headers = {clean_string(cell.value).lower() for cell in worksheet[10]}
+        # Header HDDT ở dòng 9
+        hddt_headers = {clean_string(cell.value).lower() for cell in worksheet[9]}
 
         # Các cột đặc trưng (chữ thường)
         pos_characteristic_cols = {'séri', 'số', 'đơn giá(đã có thuế gtgt)'}
         hddt_characteristic_cols = {'số công văn (số tham chiếu)', 'mã kh (fast)', 'mst khách hàng'}
 
-        # Chỉ cần 2 trong 3 cột khớp là đủ để nhận diện
         if sum(1 for col in pos_characteristic_cols if col in pos_headers) >= 2:
             return 'POS'
         if sum(1 for col in hddt_characteristic_cols if col in hddt_headers) >= 2:
             return 'HDDT'
             
     except (IndexError, TypeError):
-        # Bỏ qua nếu file quá nhỏ hoặc có lỗi khi đọc header
         pass
 
     return 'UNKNOWN'
@@ -126,6 +125,7 @@ def process_pos_report(file_content, selected_chxd, price_periods, new_price_inv
     static_data, error = load_static_data_pos()
     if error: raise ValueError(error)
 
+    # Đọc dữ liệu từ dòng 5 (header=4) là chính xác
     df = pd.read_excel(io.BytesIO(file_content), header=4)
     df.columns = [clean_string(col) for col in df.columns]
     df = df.dropna(how='all')
@@ -310,6 +310,7 @@ def process_hddt_report(file_content, selected_chxd, price_periods, new_price_in
         final_date = datetime.strptime(confirmed_date_str, '%Y-%m-%d')
     else:
         unique_dates = set()
+        # Đọc dữ liệu từ dòng 11 là chính xác
         for row in bkhd_ws.iter_rows(min_row=11, values_only=True):
             if to_float(row[8] if len(row) > 8 else None) > 0:
                 date_val = row[20] if len(row) > 20 else None
@@ -462,4 +463,3 @@ def process_unified_file(file_content, selected_chxd, price_periods, new_price_i
 
     else:
         raise ValueError("Không thể tự động nhận diện loại Bảng kê. Vui lòng kiểm tra lại file Excel bạn đã tải lên.")
-
