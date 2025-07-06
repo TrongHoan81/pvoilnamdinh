@@ -8,13 +8,11 @@ import os
 from logic_handler import process_unified_file
 
 app = Flask(__name__)
-# Sử dụng biến môi trường cho SECRET_KEY để bảo mật hơn trên server
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_fallback_secret_key_for_development')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_strong_and_unified_secret_key')
 
 def get_chxd_list():
     """Đọc danh sách CHXD từ file text để hiển thị trên giao diện."""
     try:
-        # Giả sử file DS_CHXD.txt nằm cùng thư mục với app.py
         with open("DS_CHXD.txt", "r", encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip()]
     except FileNotFoundError:
@@ -28,11 +26,14 @@ def get_chxd_list():
 def index():
     """Hiển thị trang upload chính."""
     chxd_list = get_chxd_list()
+    # Truyền vào một dict rỗng để template không bị lỗi ở lần tải đầu tiên
     return render_template('index.html', chxd_list=chxd_list, form_data={})
 
 @app.route('/process', methods=['POST'])
 def process():
     """Xử lý file tải lên bằng logic hợp nhất."""
+    # Lấy danh sách CHXD để có thể render lại trang nếu có lỗi
+    chxd_list = get_chxd_list()
     try:
         form_data = {
             "selected_chxd": request.form.get('chxd'),
@@ -44,6 +45,7 @@ def process():
 
         if not form_data["selected_chxd"]:
             flash('Vui lòng chọn CHXD.', 'warning')
+            # Khi redirect, không cần truyền lại chxd_list vì route '/' sẽ tự lấy
             return redirect(url_for('index'))
 
         file_content = None
@@ -66,8 +68,10 @@ def process():
         
         # Xử lý kết quả trả về
         if isinstance(result, dict) and result.get('choice_needed'):
+            # SỬA LỖI: Lưu lại file để dùng cho lần submit sau
             form_data["encoded_file"] = base64.b64encode(file_content).decode('utf-8')
-            return render_template('index.html', chxd_list=get_chxd_list(), date_ambiguous=True, date_options=result['options'], form_data=form_data)
+            # Truyền lại tất cả dữ liệu đã có của form để giữ lựa chọn
+            return render_template('index.html', chxd_list=chxd_list, date_ambiguous=True, date_options=result['options'], form_data=form_data)
         
         elif isinstance(result, dict) and 'old' in result:
             zip_buffer = io.BytesIO()
@@ -82,7 +86,7 @@ def process():
             return send_file(zip_buffer, as_attachment=True, download_name='UpSSE_2_giai_doan.zip', mimetype='application/zip')
 
         elif isinstance(result, io.BytesIO):
-            result.seek(0) # Đảm bảo con trỏ file ở đầu
+            result.seek(0)
             return send_file(result, as_attachment=True, download_name='UpSSE.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         
         else:
@@ -90,13 +94,12 @@ def process():
 
     except (ValueError, NotImplementedError) as ve:
         flash(str(ve), 'danger')
+        # SỬA LỖI: Render lại trang với các lựa chọn đã có thay vì redirect
+        return render_template('index.html', chxd_list=chxd_list, form_data=request.form)
     except Exception as e:
         flash(f"Đã xảy ra lỗi không mong muốn: {e}", 'danger')
-
-    return redirect(url_for('index'))
+        return render_template('index.html', chxd_list=chxd_list, form_data=request.form)
 
 # --- DÒNG QUAN TRỌNG ĐỂ KHỞI ĐỘNG SERVER ---
-# Render sẽ sử dụng dòng này để chạy ứng dụng của bạn
 if __name__ == '__main__':
-    # port=os.environ.get('PORT', 5000) để Render có thể tự gán cổng
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
