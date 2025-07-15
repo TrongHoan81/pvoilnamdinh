@@ -10,7 +10,7 @@ from collections import defaultdict
 import uuid 
 
 # Import the comparison logic from your handler file
-from doisoatthue_handler import compare_invoices # Removed _excel_date_to_datetime_robust as it's not used directly here
+from doisoatthue_handler import compare_invoices 
 
 app = Flask(__name__)
 # Configure a secret key for Flask sessions (needed for flash messages, etc., though not used directly in this example)
@@ -144,4 +144,4 @@ if __name__ == '__main__':
     # Ensure the upload folder exists when the app starts
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
-    app.run(debug=True) # debug=True is for development, set to False for production
+    # app.run(debug=True) # debug=True is for development, set to False for production - Dòng này đã được loại bỏ
