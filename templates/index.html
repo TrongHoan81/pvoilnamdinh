@@ -4,27 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Công cụ đối soát hóa đơn</title>
-    <!-- Tải Tailwind CSS từ CDN để tạo kiểu dáng -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Google Analytics - Giữ nguyên nếu bạn muốn theo dõi -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-1ZG44VNZQ9"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-    
       gtag('config', 'G-1ZG44VNZQ9');
     </script>
-
     <style>
-        /* CSS cho hiệu ứng nhấp nháy của cảnh báo */
-        @keyframes blinker { 
-            50% { opacity: 0.7; } 
-        }
-        .blinking-warning { 
-            animation: blinker 1.5s linear infinite; 
-        }
+        @keyframes blinker { 50% { opacity: 0.7; } }
+        .blinking-warning { animation: blinker 1.5s linear infinite; }
         .loader {
             border: 4px solid #f3f3f3;
             border-radius: 50%;
@@ -33,97 +23,53 @@
             height: 24px;
             animation: spin 2s linear infinite;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .table-cell-numeric { text-align: right; }
+        .diff-positive { color: #c0392b; } /* red */
+        .diff-negative { color: #27ae60; } /* green */
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen py-8">
 
-    <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl p-8">
+    <div class="w-full max-w-5xl bg-white rounded-lg shadow-xl p-8">
         <!-- Phần Logo và Tên Công Ty -->
         <div class="flex items-center justify-center space-x-4 mb-6">
-            <!-- Đã cập nhật để tham chiếu đến Logo.png trong thư mục "static" thông qua Flask url_for -->
-            <img src="{{ url_for('static', filename='Logo.png') }}" alt="Logo Công Ty" class="h-20"> 
+            <img src="{{ url_for('static', filename='Logo.png') }}" alt="Logo Công Ty" class="h-20" onerror="this.style.display='none'"> 
             <div class="text-center">
                 <h2 class="text-xl font-bold text-red-600 leading-tight">CÔNG TY CỔ PHẦN XĂNG DẦU</h2>
                 <h2 class="text-xl font-bold text-red-600 leading-tight">DẦU KHÍ NAM ĐỊNH</h2>
             </div>
         </div>
         
-        <!-- Tiêu đề chính của ứng dụng -->
         <h1 class="text-base font-bold text-center text-blue-400 mb-6">Công cụ đối soát bảng kê hóa đơn điện tử với Cơ quan Thuế</h1>
 
-        <!-- Khung Hướng dẫn sử dụng mới -->
+        <!-- Hướng dẫn sử dụng -->
         <div class="bg-blue-50 border border-blue-200 text-blue-800 p-6 rounded-md mb-6">
             <h2 class="text-lg font-bold text-blue-700 mb-3">Hướng dẫn sử dụng:</h2>
             <ol class="list-decimal list-inside space-y-2 text-gray-700">
-                <li>
-                    <span class="font-semibold">Bước 1: Tải lên file bảng kê từ Cơ quan Thuế.</span>
-                    <p class="text-sm ml-4">Chọn file Excel bảng kê hóa đơn mà bạn tải về từ hệ thống của Cơ quan Thuế.</p>
-                </li>
-                <li>
-                    <span class="font-semibold">Bước 2: Tải lên file bảng kê HĐĐT.</span>
-                    <p class="text-sm ml-4">Chọn file Excel bảng kê hóa đơn điện tử được xuất ra từ hệ thống HĐĐT của công ty bạn.</p>
-                </li>
-                <li>
-                    <span class="font-semibold">Bước 3: Thực hiện đối soát.</span>
-                    <p class="text-sm ml-4">Nhấn nút "Thực hiện Đối soát" để bắt đầu quá trình so sánh dữ liệu. Hệ thống sẽ phân tích và tìm ra các sai lệch.</p>
-                </li>
-                <li>
-                    <span class="font-semibold">Bước 4: Xem và tải kết quả.</span>
-                    <p class="text-sm ml-4">Sau khi đối soát hoàn tất, bạn sẽ thấy tóm tắt kết quả trên màn hình. Nếu có sai lệch, nút "Tải về kết quả đối soát chi tiết" sẽ xuất hiện để bạn tải file Excel chứa thông tin chi tiết.</p>
-                </li>
+                <li><span class="font-semibold">Bước 1:</span> Tải lên file bảng kê từ Cơ quan Thuế.</li>
+                <li><span class="font-semibold">Bước 2:</span> Tải lên file bảng kê HĐĐT.</li>
+                <li><span class="font-semibold">Bước 3:</span> Nhấn nút "Thực hiện Đối soát".</li>
+                <li><span class="font-semibold">Bước 4:</span> Xem và tải kết quả chi tiết nếu có sai lệch.</li>
             </ol>
             <p class="text-center text-red-600 font-bold mt-4 p-2 border border-red-400 rounded-md blinking-warning">
                 Do giới hạn của dung lượng và tốc độ xử lý, bạn chỉ nên đối soát dữ liệu hóa đơn của 1 đến 2 ngày trong 1 lần đối soát.
             </p>
         </div>
         
-        <!-- Vùng thông báo -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="mb-4 p-4 rounded-md 
-                        {% if category == 'danger' %} bg-red-100 border border-red-400 text-red-700
-                        {% elif category == 'warning' %} bg-yellow-100 border border-yellow-400 text-yellow-700
-                        {% else %} bg-green-100 border border-green-400 text-green-700
-                        {% endif %}" role="alert">
-                        {{ message | safe }}
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+        <!-- Vùng thông báo lỗi -->
+        <div id="error-alert" class="hidden mb-4 p-4 rounded-md bg-red-100 border border-red-400 text-red-700" role="alert"></div>
 
-        <!-- Form chính để tải lên hai file và thực hiện đối soát -->
+        <!-- Form chính -->
         <form id="compareForm" action="/compare_invoices" method="post" enctype="multipart/form-data" class="space-y-6">
-            
-            <!-- Input để tải lên file bảng kê từ Cơ quan Thuế -->
             <div>
                 <label for="tax_invoice_file" class="block text-lg font-medium text-gray-700 mb-2">1. Tải lên file bảng kê từ Cơ quan Thuế:</label>
-                <input type="file" name="tax_invoice_file" id="tax_invoice_file" required class="block w-full text-sm text-gray-500
-                    file:mr-4 file:py-2 file:px-4
-                    file:rounded-md file:border-0
-                    file:text-sm file:font-semibold
-                    file:bg-indigo-50 file:text-indigo-700
-                    hover:file:bg-indigo-100
-                ">
+                <input type="file" name="tax_invoice_file" id="tax_invoice_file" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
             </div>
-
-            <!-- Input để tải lên file bảng kê HĐĐT -->
             <div>
                 <label for="e_invoice_file" class="block text-lg font-medium text-gray-700 mb-2">2. Tải lên file bảng kê HĐĐT:</label>
-                <input type="file" name="e_invoice_file" id="e_invoice_file" required class="block w-full text-sm text-gray-500
-                    file:mr-4 file:py-2 file:px-4
-                    file:rounded-md file:border-0
-                    file:text-sm file:font-semibold
-                    file:bg-indigo-50 file:text-indigo-700
-                    hover:file:bg-indigo-100
-                ">
+                <input type="file" name="e_invoice_file" id="e_invoice_file" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
             </div>
-
-            <!-- Nút để thực hiện đối soát -->
             <div>
                 <button type="submit" id="submit-compare-btn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                     Thực hiện Đối soát
@@ -134,26 +80,57 @@
             </div>
         </form>
 
-        <!-- Phần hiển thị kết quả đối soát tổng thể -->
-        <div id="comparison-results" class="mt-8 pt-4 border-t {% if not reconciliation_data %}hidden{% endif %}">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Kết quả đối soát tổng thể:</h2>
-            <div id="discrepancy-summary" class="bg-red-100 border border-red-400 text-red-700 p-4 rounded-md mb-4">
-                <p class="font-semibold">Số hóa đơn không khớp: <span id="mismatched-count">{{ reconciliation_data.mismatched_invoices | length if reconciliation_data and reconciliation_data.mismatched_invoices else 0 }}</span></p>
-                <ul id="mismatched-list" class="list-disc list-inside mt-2">
-                    {% if reconciliation_data and reconciliation_data.mismatched_invoices %}
-                        {% for invoice in reconciliation_data.mismatched_invoices %}
-                            <li>{{ invoice }}</li>
-                        {% endfor %}
-                    {% else %}
+        <!-- Phần hiển thị kết quả -->
+        <div id="comparison-results" class="mt-8 pt-4 border-t hidden">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">KẾT QUẢ ĐỐI SOÁT</h2>
+            
+            <!-- Tóm tắt tổng thể MỚI -->
+            <div id="overall-summary-section" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="bg-blue-100 border border-blue-300 p-4 rounded-lg text-center">
+                    <p class="text-sm font-medium text-blue-800">Tổng số HĐĐT đã phát hành</p>
+                    <p id="total-e-invoices" class="text-2xl font-bold text-blue-900">0</p>
+                </div>
+                <div class="bg-green-100 border border-green-300 p-4 rounded-lg text-center">
+                    <p class="text-sm font-medium text-green-800">Tổng số HĐ được Thuế chấp nhận</p>
+                    <p id="total-tax-invoices" class="text-2xl font-bold text-green-900">0</p>
+                </div>
+            </div>
+
+            <!-- Bảng so sánh theo mặt hàng MỚI -->
+            <div id="item-summary-section" class="mb-6">
+                <h3 class="text-lg font-bold text-gray-700 mb-2">Bảng so sánh chi tiết theo mặt hàng</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white border border-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Tên Mặt hàng</th>
+                                <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Tiêu chí</th>
+                                <th class="py-2 px-4 border-b text-right text-sm font-semibold text-gray-600">Bảng kê HĐĐT</th>
+                                <th class="py-2 px-4 border-b text-right text-sm font-semibold text-gray-600">Bảng kê Thuế</th>
+                                <th class="py-2 px-4 border-b text-right text-sm font-semibold text-gray-600">Chênh lệch</th>
+                            </tr>
+                        </thead>
+                        <tbody id="item-summary-tbody">
+                            <!-- Dữ liệu sẽ được chèn vào đây bởi JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Kết quả khớp/không khớp CŨ -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div id="discrepancy-summary" class="bg-red-100 border border-red-400 text-red-700 p-4 rounded-md">
+                    <p class="font-semibold">Số hóa đơn không khớp: <span id="mismatched-count">0</span></p>
+                    <ul id="mismatched-list" class="list-disc list-inside mt-2 text-sm">
                         <li>Không tìm thấy hóa đơn không khớp.</li>
-                    {% endif %}
-                </ul>
+                    </ul>
+                </div>
+                <div id="match-summary" class="bg-green-100 border border-green-400 text-green-700 p-4 rounded-md">
+                    <p class="font-semibold">Số hóa đơn khớp: <span id="matched-count-display">0</span></p>
+                </div>
             </div>
-            <div id="match-summary" class="bg-green-100 border border-green-400 text-green-700 p-4 rounded-md mb-4">
-                <p class="font-semibold">Số hóa đơn khớp: <span id="matched-count-display">{{ reconciliation_data.matched_count if reconciliation_data else 0 }}</span></p>
-            </div>
-            <!-- Nút tải về kết quả chi tiết -->
-            <button type="button" id="download-results-btn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mt-4 {% if not reconciliation_data or not reconciliation_data.download_url %}hidden{% endif %}">
+            
+            <button type="button" id="download-results-btn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mt-4 hidden">
                 Tải về kết quả đối soát chi tiết
             </button>
         </div>
@@ -171,61 +148,89 @@
             const loadingIndicator = document.getElementById('loading-indicator');
             const downloadResultsBtn = document.getElementById('download-results-btn');
             const comparisonResultsDiv = document.getElementById('comparison-results');
-            const mismatchedCountSpan = document.getElementById('mismatched-count');
-            const mismatchedList = document.getElementById('mismatched-list');
-            const matchedCountDisplay = document.getElementById('matched-count-display');
-            const discrepancySummaryDiv = document.getElementById('discrepancy-summary');
-            const matchSummaryDiv = document.getElementById('match-summary');
+            const errorAlert = document.getElementById('error-alert');
 
-            // Hàm để cập nhật hiển thị kết quả trên trang
+            // --- Hàm tiện ích ---
+            const formatNumber = (num) => {
+                if (typeof num !== 'number') return '0';
+                return new Intl.NumberFormat('vi-VN').format(num);
+            };
+            
+            const hideElement = (el) => el.classList.add('hidden');
+            const showElement = (el) => el.classList.remove('hidden');
+
+            // --- Hàm cập nhật giao diện ---
             function updateResultsDisplay(data) {
-                // Luôn hiển thị phần tóm tắt sai lệch, cập nhật nội dung
-                discrepancySummaryDiv.classList.remove('hidden'); 
-                mismatchedCountSpan.textContent = data.mismatched_invoices ? data.mismatched_invoices.length : 0;
+                // Tóm tắt tổng thể
+                document.getElementById('total-e-invoices').textContent = formatNumber(data.overall_summary.total_e_invoices_published);
+                document.getElementById('total-tax-invoices').textContent = formatNumber(data.overall_summary.total_tax_invoices_accepted);
+
+                // Bảng so sánh theo mặt hàng
+                const itemTbody = document.getElementById('item-summary-tbody');
+                itemTbody.innerHTML = ''; // Xóa nội dung cũ
+                if (data.item_summary && data.item_summary.length > 0) {
+                    data.item_summary.forEach(item => {
+                        item.metrics.forEach((metric, index) => {
+                            const row = document.createElement('tr');
+                            row.className = 'border-b';
+                            
+                            let itemNameCell = '';
+                            if (index === 0) {
+                                itemNameCell = `<td class="py-2 px-4 font-semibold" rowspan="${item.metrics.length}">${item.item_name}</td>`;
+                            }
+
+                            const diffClass = metric.diff > 0 ? 'diff-positive' : (metric.diff < 0 ? 'diff-negative' : '');
+
+                            row.innerHTML = `
+                                ${itemNameCell}
+                                <td class="py-2 px-4">${metric.name}</td>
+                                <td class="py-2 px-4 table-cell-numeric">${formatNumber(metric.e_inv_val)}</td>
+                                <td class="py-2 px-4 table-cell-numeric">${formatNumber(metric.tax_val)}</td>
+                                <td class="py-2 px-4 table-cell-numeric font-bold ${diffClass}">${formatNumber(metric.diff)}</td>
+                            `;
+                            itemTbody.appendChild(row);
+                        });
+                    });
+                } else {
+                    itemTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">Không có dữ liệu mặt hàng để hiển thị.</td></tr>';
+                }
+
+                // Kết quả khớp/không khớp
+                document.getElementById('mismatched-count').textContent = data.mismatched_invoices ? data.mismatched_invoices.length : 0;
+                const mismatchedList = document.getElementById('mismatched-list');
                 mismatchedList.innerHTML = '';
                 if (data.mismatched_invoices && data.mismatched_invoices.length > 0) {
                     data.mismatched_invoices.forEach(invoice => {
-                        const listItem = document.createElement('li');
-                        listItem.textContent = invoice;
-                        mismatchedList.appendChild(listItem);
+                        const li = document.createElement('li');
+                        li.textContent = invoice;
+                        mismatchedList.appendChild(li);
                     });
                 } else {
                     mismatchedList.innerHTML = '<li>Không tìm thấy hóa đơn không khớp.</li>';
                 }
+                document.getElementById('matched-count-display').textContent = formatNumber(data.matched_count);
 
-                // Luôn hiển thị phần tóm tắt khớp, cập nhật nội dung
-                matchSummaryDiv.classList.remove('hidden');
-                matchedCountDisplay.textContent = data.matched_count || 0;
-
+                // Nút tải về
                 if (data.download_url) {
-                    downloadResultsBtn.classList.remove('hidden');
-                    // Gán trực tiếp URL vào href của nút để tải về
+                    showElement(downloadResultsBtn);
                     downloadResultsBtn.onclick = () => window.location.href = data.download_url;
                 } else {
-                    downloadResultsBtn.classList.add('hidden'); // Ẩn nút nếu không có URL tải về
+                    hideElement(downloadResultsBtn);
                 }
+
+                showElement(comparisonResultsDiv);
             }
 
-            // Xử lý trạng thái ban đầu khi trang tải (dựa trên dữ liệu Flask nếu có)
-            // Đảm bảo nút tải về được thiết lập đúng ngay từ đầu
-            const initialReconciliationData = {{ reconciliation_data | default({}) | tojson }};
-            if (Object.keys(initialReconciliationData).length > 0) {
-                comparisonResultsDiv.classList.remove('hidden');
-                updateResultsDisplay(initialReconciliationData);
-            } else {
-                comparisonResultsDiv.classList.add('hidden');
-            }
-
-
-            // Xử lý gửi form cho việc tải lên file ban đầu
+            // --- Xử lý gửi form ---
             if (compareForm) {
                 compareForm.addEventListener('submit', async function(event) {
-                    event.preventDefault(); // Ngăn chặn gửi form mặc định
+                    event.preventDefault();
+                    hideElement(errorAlert);
+                    hideElement(comparisonResultsDiv);
 
-                    // Hiển thị chỉ báo tải
                     submitCompareBtn.classList.add('opacity-50', 'cursor-not-allowed');
                     submitCompareBtn.disabled = true;
-                    loadingIndicator.classList.remove('hidden');
+                    showElement(loadingIndicator);
                     
                     const formData = new FormData(compareForm);
 
@@ -234,31 +239,24 @@
                             method: compareForm.method,
                             body: formData
                         });
-
-                        const result = await response.json(); // Luôn mong đợi phản hồi JSON từ Flask
+                        const result = await response.json();
 
                         if (response.ok) {
-                            // Đối soát thành công, cập nhật hiển thị kết quả
                             updateResultsDisplay(result);
-                            comparisonResultsDiv.classList.remove('hidden');
-                            alert('Đối soát thành công!');
-                            // Xóa giá trị các trường input file sau khi xử lý thành công
                             document.getElementById('tax_invoice_file').value = '';
                             document.getElementById('e_invoice_file').value = '';
                         } else {
-                            // Xử lý lỗi từ Flask (ví dụ: lỗi xác thực)
-                            alert('Lỗi khi đối soát: ' + (result.message || response.statusText));
-                            comparisonResultsDiv.classList.add('hidden'); // Ẩn kết quả khi có lỗi
+                            errorAlert.textContent = 'Lỗi khi đối soát: ' + (result.message || response.statusText);
+                            showElement(errorAlert);
                         }
                     } catch (error) {
                         console.error('Lỗi mạng hoặc server:', error);
-                        alert('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
-                        comparisonResultsDiv.classList.add('hidden'); // Ẩn kết quả khi có lỗi
+                        errorAlert.textContent = 'Không thể kết nối đến máy chủ. Vui lòng thử lại sau.';
+                        showElement(errorAlert);
                     } finally {
-                        // Ẩn chỉ báo tải
                         submitCompareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                         submitCompareBtn.disabled = false;
-                        loadingIndicator.classList.add('hidden');
+                        hideElement(loadingIndicator);
                     }
                 });
             }
